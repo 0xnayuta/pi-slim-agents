@@ -4,7 +4,7 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.3.0 supports two runner modes:**
+**v0.1.0 (M5) — two runner modes, management commands, delegation history and metrics.**
 
 | Mode | Behavior |
 |------|----------|
@@ -161,6 +161,59 @@ Metadata:
 If provider-call fails or is unavailable, it falls back to prompt-only with a clear message.
 
 If the agent name is invalid or not found, the tool returns a clear error and lists available agents.
+
+## Management Commands
+
+### Status
+
+```text
+/agents status
+```
+
+Shows runtime status: runner mode, provider-call availability, agent counts, config paths, and last reload time.
+
+Subcommand dispatch via `/agents status`. Standalone fallback: `/agents-status`
+
+### Reload
+
+```text
+/agents reload
+```
+
+Hot-reloads configuration and agents from disk. Re-reads:
+- Built-in agents
+- User-level agents (`~/.pi/agent/slim-agents/agents/*.md`)
+- Project-level agents (`.pi/slim-agents/agents/*.md`)
+- User-level config (`~/.pi/agent/slim-agents.json`)
+- Project-level config (`.pi/slim-agents.json`)
+
+If reload fails, the previous agent registry is preserved.
+
+Standalone fallback: `/agents-reload`
+
+### History
+
+```text
+/agents history
+```
+
+Shows the 10 most recent delegation records (newest first). Each record includes: timestamp, agent, task summary, status, duration, and whether an alias was used.
+
+**History is in-memory only** — cleared when the pi session restarts. Full prompts and results are not recorded. API keys are never stored.
+
+Standalone fallback: `/agents-history`
+
+### Metrics
+
+```text
+/agents metrics
+```
+
+Shows delegation metrics: total count, success/fallback/error breakdown, average duration, per-agent call counts, per-runnerMode counts, and provider-call availability.
+
+**Metrics are in-memory only** — cleared on restart. Token usage is shown as "unavailable".
+
+Standalone fallback: `/agents-metrics`
 
 ## Runner Modes
 
@@ -367,10 +420,20 @@ Loading priority for the same name:
 2. User-level `~/.pi/agent/pi-slim-agents/agents/*.md`
 3. Package built-in `agents/*.md`
 
+## Provider-Call Status
+
+The provider-call runner is architecturally complete but cannot make real model calls in most environments due to pnpm strict module resolution preventing import of `@mariozechner/pi-ai`. When provider-call is unavailable, the runner gracefully falls back to prompt-only.
+
+Use `/agents status` to check whether provider-call is available in your environment.
+
+See [docs/provider-call.md](docs/provider-call.md) for the full investigation and candidate solutions.
+
 ## Current limitations
 
 This version intentionally does **not** support:
 
+- Real model calls via provider-call (falls back to prompt-only)
+- Provider-call streaming
 - Spawning pi subprocesses or child processes
 - True background agents or parallel execution
 - Worktree isolation or environment sandboxing
@@ -379,6 +442,8 @@ This version intentionally does **not** support:
 - Session resume for delegated agents
 - MCP integration
 - Automatic code modification by delegated agents
+- Persistent delegation history (in-memory only, cleared on restart)
+- Real token usage statistics
 
 ## Development
 
@@ -390,7 +455,7 @@ pnpm test
 pnpm pack --dry-run
 ```
 
-The test suite uses `tsx` (no test framework). It covers:
+The test suite uses `tsx` (no test framework). It covers 115 tests:
 - All 6 built-in agents load correctly
 - Frontmatter parsing (name, description, readonly, temperature, aliases, enabled)
 - Invalid agent name rejection (spaces, slashes, path traversal, uppercase)
@@ -407,6 +472,13 @@ The test suite uses `tsx` (no test framework). It covers:
 - Model resolution (agent > defaultModel > "current")
 - Prompt assembly (task, context, files, mode)
 - Config merge (runnerMode, agent overrides)
+- History store (add, recent, count, clear, max cap)
+- Metrics computation (counts, per-agent, per-runnerMode)
+- determineDelegationStatus (success, fallback, error)
+- Status report (runnerMode, provider-call reason, agent list, secret sanitization)
+- History table and metrics formatting
+- Reload with project-level fixtures, config overrides, error preservation
+- Agent source field (package, project)
 
 ## License
 

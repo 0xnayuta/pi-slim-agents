@@ -156,6 +156,7 @@ function resolveAgents(
         enabled: !isAgentDisabled(config, agentName),
         order: typeof fm.order === 'number' ? fm.order : 100,
         sourcePath: entry.filePath,
+        source: entry.source,
       };
 
       agents.push(agent);

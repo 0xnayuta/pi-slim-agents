@@ -20,7 +20,19 @@ import {
   resolveModel,
   type ProviderRunnerContext,
 } from '../src/provider-runner.js';
-import type { AgentDefinition, DelegateAgentParams, SlimAgentsConfig } from '../src/types.js';
+import { historyStore, determineDelegationStatus } from '../src/history.js';
+import type { MetricsSummary } from '../src/history.js';
+import {
+  buildStatusReport,
+  formatStatusReport,
+  formatHistoryTable,
+  formatMetrics,
+  formatReloadResult,
+  performReload,
+} from '../src/status.js';
+import type { AgentDefinition, DelegationRecord, DelegationResult, DelegateAgentParams, SlimAgentsConfig } from '../src/types.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -691,6 +703,512 @@ await test('runnerMode is merged from project config', () => {
 await test('runnerMode defaults to prompt-only when not set', () => {
   const config: SlimAgentsConfig = {};
   assert.equal(config.runnerMode, undefined); // undefined means prompt-only by default
+});
+
+// ─── 17. History store ──────────────────────────────────────────────
+
+console.log('\n17. History store');
+
+await test('history store starts empty', () => {
+  historyStore.clear();
+  assert.equal(historyStore.count(), 0);
+  assert.deepEqual(historyStore.recent(), []);
+});
+
+await test('history store add and recent', () => {
+  historyStore.clear();
+  historyStore.add({
+    timestamp: Date.now(),
+    requestedAgent: 'search',
+    resolvedAgent: 'explorer',
+    taskSummary: 'Find all TypeScript files',
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 120,
+    providerCallAvailable: false,
+    aliasUsed: true,
+  });
+  assert.equal(historyStore.count(), 1);
+  const recent = historyStore.recent(1);
+  assert.equal(recent.length, 1);
+  assert.equal(recent[0].resolvedAgent, 'explorer');
+  assert.equal(recent[0].aliasUsed, true);
+});
+
+await test('history store recent returns newest first', () => {
+  historyStore.clear();
+  historyStore.add({
+    timestamp: 1000,
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    taskSummary: 'First task',
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    providerCallAvailable: false,
+    aliasUsed: false,
+  });
+  historyStore.add({
+    timestamp: 2000,
+    requestedAgent: 'fixer',
+    resolvedAgent: 'fixer',
+    taskSummary: 'Second task',
+    mode: 'quick',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 200,
+    providerCallAvailable: false,
+    aliasUsed: false,
+  });
+  const recent = historyStore.recent(10);
+  assert.equal(recent.length, 2);
+  assert.equal(recent[0].taskSummary, 'Second task');
+  assert.equal(recent[1].taskSummary, 'First task');
+});
+
+await test('history store clear', () => {
+  historyStore.clear();
+  assert.equal(historyStore.count(), 0);
+});
+
+await test('history store caps at MAX_HISTORY', () => {
+  historyStore.clear();
+  for (let i = 0; i < 250; i++) {
+    historyStore.add({
+      timestamp: i,
+      requestedAgent: 'oracle',
+      resolvedAgent: 'oracle',
+      taskSummary: `Task ${i}`,
+      mode: 'normal',
+      runnerMode: 'prompt-only',
+      status: 'success',
+      durationMs: 100,
+      providerCallAvailable: false,
+      aliasUsed: false,
+    });
+  }
+  assert.ok(historyStore.count() <= 200, `count should be <= 200, got ${historyStore.count()}`);
+  historyStore.clear();
+});
+
+// ─── 18. Metrics ────────────────────────────────────────────────────
+
+console.log('\n18. Metrics');
+
+await test('metrics from empty history', () => {
+  historyStore.clear();
+  const m = historyStore.metrics();
+  assert.equal(m.total, 0);
+  assert.equal(m.success, 0);
+  assert.equal(m.fallback, 0);
+  assert.equal(m.error, 0);
+  assert.equal(m.avgDurationMs, 0);
+});
+
+await test('metrics computes correct counts', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 200, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 3, requestedAgent: 'c', resolvedAgent: 'fixer', taskSummary: '', mode: 'normal', runnerMode: 'provider-call', status: 'fallback', durationMs: 50, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 4, requestedAgent: 'd', resolvedAgent: 'unknown', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'error', durationMs: 10, providerCallAvailable: false, aliasUsed: false });
+
+  const m = historyStore.metrics();
+  assert.equal(m.total, 4);
+  assert.equal(m.success, 2);
+  assert.equal(m.fallback, 1);
+  assert.equal(m.error, 1);
+  assert.equal(m.avgDurationMs, 90); // (100+200+50+10)/4
+  assert.equal(m.perAgent['oracle'], 1);
+  assert.equal(m.perAgent['explorer'], 1);
+  assert.equal(m.perAgent['fixer'], 1);
+  assert.equal(m.perRunnerMode['prompt-only'], 3);
+  assert.equal(m.perRunnerMode['provider-call'], 1);
+  assert.equal(m.providerCallAvailable, 0);
+  assert.equal(m.providerCallUnavailable, 4);
+  historyStore.clear();
+});
+
+await test('metrics provider-call available count', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'provider-call', status: 'success', durationMs: 100, providerCallAvailable: true, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'provider-call', status: 'fallback', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const m = historyStore.metrics();
+  assert.equal(m.providerCallAvailable, 1);
+  assert.equal(m.providerCallUnavailable, 1);
+  historyStore.clear();
+});
+
+// ─── 19. determineDelegationStatus ─────────────────────────────────
+
+console.log('\n19. determineDelegationStatus');
+
+await test('error result → error status', () => {
+  const result: DelegationResult = { ok: false, prompt: '', agentName: 'unknown', error: 'Agent not found' };
+  const status = determineDelegationStatus(result, {});
+  assert.equal(status.status, 'error');
+  assert.equal(status.errorReason, 'Agent not found');
+});
+
+await test('prompt-only success → success status', () => {
+  const result: DelegationResult = { ok: true, prompt: 'some prompt', agentName: 'oracle' };
+  const status = determineDelegationStatus(result, {});
+  assert.equal(status.status, 'success');
+  assert.equal(status.errorReason, undefined);
+});
+
+await test('provider-call with actual result → success status', () => {
+  const result: DelegationResult = {
+    ok: true,
+    prompt: '',
+    agentName: 'oracle',
+    providerOutput: 'Agent: @oracle\nMode: provider-call\nTask: review\nResult:\nHere is my review\n\nMetadata:\n- resolvedAgent: oracle',
+    meta: { resolvedAgent: 'oracle', requestedAgent: 'arch', model: 'current', temperature: 0.2, runnerMode: 'provider-call' },
+  };
+  const config: SlimAgentsConfig = { runnerMode: 'provider-call' };
+  const status = determineDelegationStatus(result, config);
+  assert.equal(status.status, 'success');
+});
+
+await test('provider-call with fallback → fallback status', () => {
+  const result: DelegationResult = {
+    ok: true,
+    prompt: 'fallback prompt',
+    agentName: 'oracle',
+    providerOutput: 'Agent: @oracle\nMode: provider-call (fallback to prompt-only)\nTask: review\nError: pi-ai not available\nFallback Prompt:\n...',
+    meta: { resolvedAgent: 'oracle', requestedAgent: 'oracle', model: 'current', temperature: 0.2, runnerMode: 'provider-call' },
+    message: 'Provider-call unavailable. Falling back to prompt-only for @oracle.',
+  };
+  const config: SlimAgentsConfig = { runnerMode: 'provider-call' };
+  const status = determineDelegationStatus(result, config);
+  assert.equal(status.status, 'fallback');
+  assert.ok(status.errorReason?.includes('unavailable'));
+});
+
+await test('provider-call without ctx → fallback status', () => {
+  const result: DelegationResult = {
+    ok: true,
+    prompt: 'prompt content',
+    agentName: 'oracle',
+    message: 'Provider-call mode requested but no ExtensionContext available. Returning prompt-only for @oracle.',
+  };
+  const config: SlimAgentsConfig = { runnerMode: 'provider-call' };
+  const status = determineDelegationStatus(result, config);
+  assert.equal(status.status, 'fallback');
+});
+
+// ─── 20. Status report ─────────────────────────────────────────────
+
+console.log('\n20. Status report');
+
+await test('buildStatusReport returns correct structure', () => {
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: { available: false, error: 'Cannot find module pi-ai' },
+    lastReloadTime: '2024-01-15T10:30:00Z',
+    delegationCount: 5,
+  });
+  assert.equal(report.runnerMode, 'prompt-only');
+  assert.equal(report.providerCall.available, false);
+  assert.ok(report.providerCall.reason.includes('not importable'));
+  assert.equal(report.agents.total, 6);
+  assert.equal(report.agents.enabled, 6);
+  assert.equal(report.agents.disabled, 0);
+  assert.ok(report.agents.aliasCount > 0);
+  assert.equal(report.lastReloadTime, '2024-01-15T10:30:00Z');
+  assert.equal(report.delegationCount, 5);
+});
+
+await test('formatStatusReport includes runnerMode', () => {
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: { runnerMode: 'provider-call' },
+    providerCallStatus: null,
+    lastReloadTime: null,
+    delegationCount: 0,
+  });
+  const output = formatStatusReport(report);
+  assert.ok(output.includes('Runner Mode:  provider-call'), `should include runnerMode: ${output}`);
+});
+
+await test('formatStatusReport shows provider unavailable reason', () => {
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: { available: false, error: 'Cannot find module @mariozechner/pi-ai' },
+    lastReloadTime: null,
+    delegationCount: 0,
+  });
+  const output = formatStatusReport(report);
+  assert.ok(output.includes('unavailable'), `should show unavailable: ${output}`);
+  assert.ok(output.includes('not importable'), `should show reason: ${output}`);
+});
+
+await test('formatStatusReport lists all agents', () => {
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: null,
+    lastReloadTime: null,
+    delegationCount: 0,
+  });
+  const output = formatStatusReport(report);
+  assert.ok(output.includes('@explorer'), 'should include explorer');
+  assert.ok(output.includes('@oracle'), 'should include oracle');
+  assert.ok(output.includes('@fixer'), 'should include fixer');
+});
+
+await test('formatStatusReport does not leak API keys', () => {
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: { available: false, error: 'apiKey: sk-1234567890abcdef' },
+    lastReloadTime: null,
+    delegationCount: 0,
+  });
+  const output = formatStatusReport(report);
+  // The error is truncated to 60 chars, so the full key won't appear
+  // But let's verify the output doesn't contain the raw error with key
+  // Actually, categorizeProviderError truncates to 60 chars
+  assert.ok(!output.includes('sk-1234567890abcdef'), 'should not contain full API key');
+});
+
+// ─── 21. History table formatting ───────────────────────────────────
+
+console.log('\n21. History table formatting');
+
+await test('formatHistoryTable with records', () => {
+  const records: DelegationRecord[] = [
+    { timestamp: Date.now(), requestedAgent: 'search', resolvedAgent: 'explorer', taskSummary: 'Find TypeScript files', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 120, providerCallAvailable: false, aliasUsed: true },
+    { timestamp: Date.now() - 60000, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'Review architecture', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 3500, providerCallAvailable: false, aliasUsed: false },
+  ];
+  const output = formatHistoryTable(records);
+  assert.ok(output.includes('Delegation History'), 'should have title');
+  assert.ok(output.includes('@explorer'), 'should include agent name');
+  assert.ok(output.includes('via search'), 'should show alias');
+  assert.ok(output.includes('success'), 'should show status');
+});
+
+await test('formatHistoryTable empty', () => {
+  const output = formatHistoryTable([]);
+  assert.ok(output.includes('No delegations'), 'should show empty message');
+});
+
+// ─── 22. Metrics formatting ─────────────────────────────────────────
+
+console.log('\n22. Metrics formatting');
+
+await test('formatMetrics output includes all sections', () => {
+  const metrics: MetricsSummary = {
+    total: 10,
+    success: 7,
+    fallback: 2,
+    error: 1,
+    avgDurationMs: 450,
+    perAgent: { oracle: 4, explorer: 3, fixer: 2, librarian: 1 },
+    perRunnerMode: { 'prompt-only': 8, 'provider-call': 2 },
+    providerCallAvailable: 1,
+    providerCallUnavailable: 9,
+  };
+  const output = formatMetrics(metrics);
+  assert.ok(output.includes('Total:    10'), 'should show total');
+  assert.ok(output.includes('Success:  7'), 'should show success');
+  assert.ok(output.includes('Fallback: 2'), 'should show fallback');
+  assert.ok(output.includes('Error:    1'), 'should show error');
+  assert.ok(output.includes('Avg Duration: 450ms'), 'should show avg duration');
+  assert.ok(output.includes('unavailable'), 'should show token usage unavailable');
+  assert.ok(output.includes('@oracle'), 'should show per-agent');
+  assert.ok(output.includes('prompt-only'), 'should show per-runnerMode');
+  assert.ok(output.includes('Available:    1'), 'should show provider-call available');
+});
+
+await test('formatMetrics with zero total', () => {
+  const metrics: MetricsSummary = {
+    total: 0, success: 0, fallback: 0, error: 0,
+    avgDurationMs: 0, perAgent: {}, perRunnerMode: {},
+    providerCallAvailable: 0, providerCallUnavailable: 0,
+  };
+  const output = formatMetrics(metrics);
+  assert.ok(output.includes('Total:    0'), 'should show zero total');
+});
+
+// ─── 23. Reload ─────────────────────────────────────────────────────
+
+console.log('\n23. Reload');
+
+await test('performReload loads built-in agents', () => {
+  const result = performReload(PROJECT_ROOT);
+  assert.equal(result.ok, true);
+  assert.equal(result.agentCount, 6);
+  assert.equal(result.enabledCount, 6);
+  assert.equal(result.disabledCount, 0);
+  assert.ok(result.aliasCount > 0);
+});
+
+await test('performReload with project-level fixture', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+
+  try {
+    // Create project config
+    const configDir = path.join(tmpDir, '.pi');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'slim-agents.json'),
+      JSON.stringify({ runnerMode: 'provider-call' }),
+    );
+
+    // Create project-level agent
+    const agentsDir = path.join(configDir, 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, 'test-agent.md'),
+      '---\nname: test-agent\ndescription: A test agent\nreadonly: true\naliases:\n  - test\n---\n\nYou are a test agent.',
+    );
+
+    const result = performReload(tmpDir);
+    assert.equal(result.ok, true);
+    assert.ok(result.agents.some(a => a.name === 'test-agent'), 'should include test-agent');
+    assert.equal(result.config.runnerMode, 'provider-call');
+
+    const testAgent = result.agents.find(a => a.name === 'test-agent')!;
+    assert.equal(testAgent.readonly, true);
+    assert.ok(testAgent.aliases.includes('test'), 'should have alias');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('performReload with empty directory still succeeds', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = performReload(tmpDir);
+    assert.equal(result.ok, true, 'should succeed even with no agents');
+    // Only built-in agents from the package are loaded
+    assert.ok(result.agentCount >= 0, 'agent count should be non-negative');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('formatReloadResult success', () => {
+  const result = performReload(PROJECT_ROOT);
+  const output = formatReloadResult(result, '2024-01-15T10:30:00Z');
+  assert.ok(output.includes('Reload Complete'), 'should show success');
+  assert.ok(output.includes('6 loaded'), 'should show agent count');
+  assert.ok(output.includes('enabled'), 'should show enabled count');
+});
+
+await test('formatReloadResult failure', () => {
+  const result = { ok: false, config: {}, agents: [], agentCount: 0, enabledCount: 0, disabledCount: 0, aliasCount: 0, loadedConfigPaths: [], error: 'Test error' };
+  const output = formatReloadResult(result, '2024-01-15T10:30:00Z');
+  assert.ok(output.includes('Reload Failed'), 'should show failure');
+  assert.ok(output.includes('Test error'), 'should show error');
+  assert.ok(output.includes('Previous state preserved'), 'should mention preservation');
+});
+
+await test('reload with config override disables agent', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const configDir = path.join(tmpDir, '.pi');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'slim-agents.json'),
+      JSON.stringify({ agents: { explorer: { enabled: false } } }),
+    );
+
+    const result = performReload(tmpDir);
+    assert.equal(result.ok, true);
+    assert.equal(result.disabledCount, 1, 'should have 1 disabled agent');
+
+    const explorer = result.agents.find(a => a.name === 'explorer');
+    assert.ok(explorer, 'explorer should exist');
+    assert.equal(explorer!.enabled, false, 'explorer should be disabled');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ─── 24. Agent source field ─────────────────────────────────────────
+
+console.log('\n24. Agent source field');
+
+await test('built-in agents have source=package', () => {
+  for (const agent of agents) {
+    assert.equal(agent.source, 'package', `Agent "${agent.name}" should have source=package`);
+  }
+});
+
+await test('project-level agent has source=project', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, 'my-agent.md'),
+      '---\nname: my-agent\ndescription: My agent\n---\n\nBody.',
+    );
+    const loaded = loadAgents(tmpDir, {});
+    const myAgent = loaded.find(a => a.name === 'my-agent');
+    assert.ok(myAgent, 'my-agent should be loaded');
+    assert.equal(myAgent!.source, 'project', 'should have source=project');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ─── 25. Delegation history integration ─────────────────────────────
+
+console.log('\n25. Delegation history integration');
+
+await test('determineDelegationStatus with disabled agent error', async () => {
+  const config: SlimAgentsConfig = { agents: { designer: { enabled: false } } };
+  const result = await runDelegation(
+    { agent: 'designer', task: 'Design the UI' },
+    PROJECT_ROOT,
+    config,
+  );
+  assert.equal(result.ok, false);
+  const status = determineDelegationStatus(result, config);
+  assert.equal(status.status, 'error');
+  assert.ok(status.errorReason?.includes('disabled'));
+});
+
+await test('determineDelegationStatus with alias resolution success', async () => {
+  const result = await runDelegation(
+    { agent: 'search', task: 'Find files' },
+    PROJECT_ROOT,
+    {},
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.agentName, 'explorer');
+  const status = determineDelegationStatus(result, {});
+  assert.equal(status.status, 'success');
+});
+
+await test('alias detection: requestedAgent !== resolvedAgent', async () => {
+  const result = await runDelegation(
+    { agent: 'search', task: 'Find files' },
+    PROJECT_ROOT,
+    {},
+  );
+  assert.equal(result.ok, true);
+  // In the extension, aliasUsed = agentName !== result.agentName
+  const aliasUsed = 'search' !== result.agentName;
+  assert.equal(aliasUsed, true, 'should detect alias usage');
+});
+
+await test('direct name: no alias detected', async () => {
+  const result = await runDelegation(
+    { agent: 'explorer', task: 'Find files' },
+    PROJECT_ROOT,
+    {},
+  );
+  assert.equal(result.ok, true);
+  const aliasUsed = 'explorer' !== result.agentName;
+  assert.equal(aliasUsed, false, 'should not detect alias');
 });
 
 // ─── Summary ────────────────────────────────────────────────────────

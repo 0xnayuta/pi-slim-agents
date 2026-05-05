@@ -46,6 +46,8 @@ export interface AgentDefinition {
   order: number;
   /** Source path (for diagnostics). */
   sourcePath?: string;
+  /** Where this agent was loaded from. */
+  source?: AgentSource;
 }
 
 // ─── Configuration ─────────────────────────────────────────────────
@@ -131,6 +133,34 @@ export interface DelegationResult {
   providerOutput?: string;
   /** Provider-call metadata. */
   meta?: ProviderCallMeta;
+}
+
+// ─── Delegation History ─────────────────────────────────────────────
+
+/** A record of a single delegation call. */
+export interface DelegationRecord {
+  /** Unix timestamp (ms) when the delegation was made. */
+  timestamp: number;
+  /** The agent name as requested by the user. */
+  requestedAgent: string;
+  /** The resolved agent name (after alias resolution). */
+  resolvedAgent: string;
+  /** Truncated task description. */
+  taskSummary: string;
+  /** Delegation mode (quick/normal/deep). */
+  mode: string;
+  /** Runner mode used. */
+  runnerMode: RunnerMode;
+  /** Outcome status. */
+  status: 'success' | 'fallback' | 'error';
+  /** Duration in milliseconds. */
+  durationMs: number;
+  /** Whether provider-call was available at the time. */
+  providerCallAvailable: boolean;
+  /** Error reason if status is 'error' or 'fallback'. */
+  errorReason?: string;
+  /** Whether an alias was used to resolve the agent. */
+  aliasUsed: boolean;
 }
 
 // ─── Agent Loader ───────────────────────────────────────────────────
