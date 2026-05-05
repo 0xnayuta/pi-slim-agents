@@ -64,6 +64,7 @@ function mergeConfigs(
   const merged: SlimAgentsConfig = { ...user };
 
   // Project overrides
+  if (proj.runnerMode !== undefined) merged.runnerMode = proj.runnerMode;
   if (proj.defaultModel !== undefined) merged.defaultModel = proj.defaultModel;
   if (proj.disabled !== undefined) {
     merged.disabled = [...new Set([...(user.disabled ?? []), ...proj.disabled])];

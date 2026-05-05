@@ -1,37 +1,44 @@
 /**
  * Delegation runner for pi-slim-agents.
  *
- * v1: Returns a structured delegation prompt that the main agent can use
- * to adopt the specialist's role. This is the "prompt-based delegation" approach.
+ * Routes between two runner modes:
+ *   - "prompt-only"  — returns a structured delegation prompt (default)
+ *   - "provider-call" — attempts to call the model via pi-ai, with fallback
  *
- * TODO(v2): Integrate with pi-mono child session / provider call API when available.
- *   - Create an independent model call with the specialist's system prompt
- *   - Stream results back to the main session
- *   - Support parallel delegation for multiple agents
+ * Both modes share the same validation, alias resolution, and disabled-agent
+ * checks. Only the final output generation differs.
  */
 
 import type {
   AgentDefinition,
   DelegationResult,
   DelegateAgentParams,
+  RunnerMode,
   SlimAgentsConfig,
 } from './types.js';
 import { loadAgents, resolveAgentName } from './agents.js';
 import { isSafeAgentName } from './utils.js';
+import { runProviderDelegation, type ProviderRunnerContext } from './provider-runner.js';
+
+export type { ProviderRunnerContext };
 
 // ─── Public API ─────────────────────────────────────────────────────
 
 /**
  * Execute a delegation request.
  *
- * In v1, this builds a structured delegation prompt that tells the main
- * agent to adopt the specialist's role and complete the task.
+ * Validates input, resolves aliases, checks disabled status, then
+ * routes to the appropriate runner based on config.runnerMode.
+ *
+ * @param ctx - ExtensionContext (required for provider-call mode).
+ *              Pass undefined to force prompt-only fallback.
  */
-export function runDelegation(
+export async function runDelegation(
   params: DelegateAgentParams,
   cwd: string,
   config: SlimAgentsConfig,
-): DelegationResult {
+  ctx?: ProviderRunnerContext,
+): Promise<DelegationResult> {
   // Validate input format
   if (!isSafeAgentName(params.agent)) {
     const enabled = loadAgents(cwd, config).filter(a => a.enabled);
@@ -74,6 +81,14 @@ export function runDelegation(
     };
   }
 
+  // Route to appropriate runner
+  const runnerMode: RunnerMode = config.runnerMode ?? 'prompt-only';
+
+  if (runnerMode === 'provider-call') {
+    return runProviderCallOrFallback(agent, params, config, ctx);
+  }
+
+  // Default: prompt-only
   return {
     ok: true,
     prompt: buildDelegationPrompt(agent, params),
@@ -82,12 +97,40 @@ export function runDelegation(
   };
 }
 
+// ─── Provider-call routing ──────────────────────────────────────────
+
+async function runProviderCallOrFallback(
+  agent: AgentDefinition,
+  params: DelegateAgentParams,
+  config: SlimAgentsConfig,
+  ctx?: ProviderRunnerContext,
+): Promise<DelegationResult> {
+  if (!ctx) {
+    // No context available — cannot do provider-call, fall back to prompt-only
+    return {
+      ok: true,
+      prompt: buildDelegationPrompt(agent, params),
+      agentName: agent.name,
+      message: `Provider-call mode requested but no ExtensionContext available. Returning prompt-only for @${agent.name}.`,
+    };
+  }
+
+  return runProviderDelegation(agent, params, config, ctx);
+}
+
+// ─── Prompt-only output ─────────────────────────────────────────────
+
 /**
  * Format a delegation result for display to the user.
  */
 export function formatDelegationResult(result: DelegationResult): string {
   if (!result.ok) {
     return `❌ Delegation failed: ${result.error}`;
+  }
+
+  // Provider-call mode with actual output
+  if (result.providerOutput) {
+    return result.providerOutput;
   }
 
   const lines = [
@@ -104,7 +147,7 @@ export function formatDelegationResult(result: DelegationResult): string {
 
 // ─── Prompt Builder ─────────────────────────────────────────────────
 
-function buildDelegationPrompt(
+export function buildDelegationPrompt(
   agent: AgentDefinition,
   params: DelegateAgentParams,
 ): string {

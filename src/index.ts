@@ -11,7 +11,7 @@ import { Type } from 'typebox';
 
 import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
-import { runDelegation } from './runner.js';
+import { runDelegation, type ProviderRunnerContext } from './runner.js';
 import type { DelegateAgentParams, SlimAgentsConfig } from './types.js';
 
 // ─── Extension Factory ──────────────────────────────────────────────
@@ -123,10 +123,19 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       // Refresh config in case it changed
       config = loadConfig(cwd);
 
-      const result = runDelegation(
+      // Build provider-runner context from ExtensionContext
+      const providerCtx: ProviderRunnerContext | undefined = ctx
+        ? {
+            model: ctx.model as ProviderRunnerContext['model'],
+            modelRegistry: ctx.modelRegistry as ProviderRunnerContext['modelRegistry'],
+          }
+        : undefined;
+
+      const result = await runDelegation(
         { agent: agentName, task, context, files, mode },
         cwd,
         config,
+        providerCtx,
       );
 
       if (!result.ok) {
@@ -136,12 +145,15 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         };
       }
 
-      // v1 prompt-only runner: return the structured delegation prompt.
+      // Use provider-call output if available, otherwise fall back to prompt.
+      const output = result.providerOutput ?? result.prompt;
+
       return {
-        content: [{ type: 'text', text: result.prompt }],
+        content: [{ type: 'text', text: output }],
         details: {
           agent: result.agentName,
           delegated: true,
+          meta: result.meta,
         },
       };
     },

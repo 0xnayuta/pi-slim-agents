@@ -50,11 +50,16 @@ export interface AgentDefinition {
 
 // ─── Configuration ─────────────────────────────────────────────────
 
+/** Runner mode — controls how delegation is executed. */
+export type RunnerMode = 'prompt-only' | 'provider-call';
+
 /** User/project configuration file shape (.pi/slim-agents.json). */
 export interface SlimAgentsConfig {
   /** Agent name overrides — keys are agent names, values are overrides. */
   agents?: Record<string, AgentOverride>;
-  /** Default model hint for delegation (informational in v1). */
+  /** Runner mode: 'prompt-only' (default) or 'provider-call'. */
+  runnerMode?: RunnerMode;
+  /** Default model hint for delegation ('current' or model id). */
   defaultModel?: string;
   /** Agents to disable. */
   disabled?: string[];
@@ -66,6 +71,8 @@ export interface SlimAgentsConfig {
 export interface AgentOverride {
   description?: string;
   temperature?: number;
+  /** Model override for this agent ('current' or model id). */
+  model?: string;
   /** Replace the entire prompt. */
   prompt?: string;
   /** Append to the existing prompt. */
@@ -94,6 +101,20 @@ export interface DelegateAgentParams {
   mode?: 'quick' | 'normal' | 'deep';
 }
 
+/** Metadata for provider-call results. */
+export interface ProviderCallMeta {
+  /** Resolved agent name. */
+  resolvedAgent: string;
+  /** Originally requested agent name (before alias resolution). */
+  requestedAgent: string;
+  /** Model used ("current" or actual model id). */
+  model: string;
+  /** Temperature used. */
+  temperature: number;
+  /** Runner mode used. */
+  runnerMode: RunnerMode;
+}
+
 /** Result returned by the runner. */
 export interface DelegationResult {
   /** Whether delegation succeeded. */
@@ -106,6 +127,10 @@ export interface DelegationResult {
   error?: string;
   /** Informational message. */
   message?: string;
+  /** Provider-call mode output (actual model response). */
+  providerOutput?: string;
+  /** Provider-call metadata. */
+  meta?: ProviderCallMeta;
 }
 
 // ─── Agent Loader ───────────────────────────────────────────────────
