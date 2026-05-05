@@ -2,16 +2,19 @@
  * pi-slim-agents — pi-mono Extension Entry Point
  *
  * Registers:
- *   - /agents             — List available specialist agents (with subcommands)
- *   - /agents status      — Show runtime status
- *   - /agents reload      — Reload config and agents from disk
- *   - /agents history     — Show recent delegation history
- *   - /agents metrics     — Show delegation metrics
- *   - /agents-status      — Standalone status command (fallback)
- *   - /agents-reload      — Standalone reload command (fallback)
- *   - /agents-history     — Standalone history command (fallback)
- *   - /agents-metrics     — Standalone metrics command (fallback)
- *   - delegate_agent      — Tool for the LLM to delegate tasks to specialists
+ *   - /agent               — Quick delegation shortcut
+ *   - /agents              — List available specialist agents (with subcommands)
+ *   - /agents status       — Show runtime status
+ *   - /agents reload       — Reload config and agents from disk
+ *   - /agents history      — Show recent delegation history
+ *   - /agents metrics      — Show delegation metrics
+ *   - /agents replay <id>  — Replay a delegation from history
+ *   - /agents-status       — Standalone status command (fallback)
+ *   - /agents-reload       — Standalone reload command (fallback)
+ *   - /agents-history      — Standalone history command (fallback)
+ *   - /agents-metrics      — Standalone metrics command (fallback)
+ *   - /agents-replay       — Standalone replay command (fallback)
+ *   - delegate_agent       — Tool for the LLM to delegate tasks to specialists
  */
 
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
@@ -19,9 +22,9 @@ import { Type } from 'typebox';
 
 import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
-import { runDelegation, type ProviderRunnerContext } from './runner.js';
+import { formatDelegationResult, type ProviderRunnerContext } from './runner.js';
 import { isProviderCallAvailable } from './provider-runner.js';
-import { historyStore, determineDelegationStatus } from './history.js';
+import { historyStore } from './history.js';
 import {
   buildStatusReport,
   formatStatusReport,
@@ -30,7 +33,14 @@ import {
   formatReloadResult,
   performReload,
 } from './status.js';
-import type { DelegateAgentParams, DelegationResult, RunnerMode, SlimAgentsConfig } from './types.js';
+import {
+  parseAgentCommand,
+  buildAgentHelpText,
+  buildAvailableAgentsList,
+  runAndRecordDelegation,
+  replayDelegation,
+} from './commands.js';
+import type { DelegateAgentParams, SlimAgentsConfig } from './types.js';
 
 // ─── Extension Factory ──────────────────────────────────────────────
 
@@ -123,20 +133,66 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     ctx.ui.notify(lines.join('\n'), 'info');
   }
 
+  // ── Replay handler ───────────────────────────────────────────────
+
+  async function handleReplay(args: string, ctx: any) {
+    const idStr = args.trim();
+    if (!idStr) {
+      const ids = historyStore.allIds();
+      const idsStr = ids.length > 0
+        ? `Available IDs: ${ids.join(', ')}`
+        : 'No history records available.';
+      ctx.ui.notify(`Usage: /agents replay <id>\n${idsStr}`, 'warning');
+      return;
+    }
+
+    const id = parseInt(idStr, 10);
+    if (isNaN(id)) {
+      ctx.ui.notify(`Invalid history ID "${idStr}". Must be a number.`, 'error');
+      return;
+    }
+
+    config = loadConfig(cwd);
+    const providerCtx: ProviderRunnerContext | undefined = undefined;
+
+    const replayResult = await replayDelegation(
+      id,
+      cwd,
+      config,
+      providerCallStatus?.available ?? false,
+      providerCtx,
+    );
+
+    if (!replayResult.ok) {
+      ctx.ui.notify(`❌ Replay failed: ${replayResult.error}`, 'error');
+      return;
+    }
+
+    const lines: string[] = [`🔄 Replay of history #${id}`];
+    if (replayResult.aliasDriftWarning) {
+      lines.push('', replayResult.aliasDriftWarning);
+    }
+    lines.push('', formatDelegationResult(replayResult.result!));
+
+    ctx.ui.notify(lines.join('\n'), 'info');
+  }
+
   // ── /agents command with subcommand dispatch ──────────────────────
 
-  const KNOWN_SUBCOMMANDS = ['status', 'reload', 'history', 'metrics'];
+  const KNOWN_SUBCOMMANDS = ['status', 'reload', 'history', 'metrics', 'replay'];
 
   pi.registerCommand('agents', {
-    description: 'List agents. Subcommands: status, reload, history, metrics',
+    description: 'List agents. Subcommands: status, reload, history, metrics, replay',
     handler: async (args, ctx) => {
-      const subcommand = (args ?? '').trim().toLowerCase();
+      const rawArgs = (args ?? '').trim();
+      // Check if first word is a subcommand
+      const firstWord = rawArgs.split(/\s+/)[0]?.toLowerCase() ?? '';
 
-      if (!subcommand) {
+      if (!rawArgs) {
         return handleList(ctx);
       }
 
-      switch (subcommand) {
+      switch (firstWord) {
         case 'status':
           return handleStatus(ctx);
         case 'reload':
@@ -145,9 +201,11 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
           return handleHistory(ctx);
         case 'metrics':
           return handleMetrics(ctx);
+        case 'replay':
+          return handleReplay(rawArgs.slice('replay'.length), ctx);
         default:
           ctx.ui.notify(
-            `Unknown subcommand "${subcommand}". Available: ${KNOWN_SUBCOMMANDS.join(', ')}`,
+            `Unknown subcommand "${firstWord}". Available: ${KNOWN_SUBCOMMANDS.join(', ')}`,
             'warning',
           );
       }
@@ -174,6 +232,72 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   pi.registerCommand('agents-metrics', {
     description: 'Show delegation metrics',
     handler: async (_args, ctx) => handleMetrics(ctx),
+  });
+
+  pi.registerCommand('agents-replay', {
+    description: 'Replay a delegation from history by ID',
+    handler: async (args, ctx) => handleReplay(args ?? '', ctx),
+  });
+
+  // ── /agent shortcut command ─────────────────────────────────────
+
+  pi.registerCommand('agent', {
+    description: 'Quick delegation: /agent <agent-or-alias> <task...>',
+    handler: async (args, ctx) => {
+      const { agent: agentName, task } = parseAgentCommand(args ?? '');
+
+      if (!agentName) {
+        ctx.ui.notify(buildAgentHelpText(), 'info');
+        return;
+      }
+
+      if (!task) {
+        ctx.ui.notify(buildAgentHelpText(), 'info');
+        return;
+      }
+
+      // Refresh config
+      config = loadConfig(cwd);
+
+      // Validate agent exists before running
+      const allAgents = loadAgents(cwd, config);
+      const { resolveAgentName } = await import('./agents.js');
+      const resolvedName = resolveAgentName(agentName, allAgents);
+
+      if (!resolvedName) {
+        ctx.ui.notify(
+          `❌ Agent "${agentName}" not found.\n\n${buildAvailableAgentsList(cwd, config)}`,
+          'error',
+        );
+        return;
+      }
+
+      const agent = allAgents.find(a => a.name === resolvedName);
+      if (agent && !agent.enabled) {
+        const viaAlias = agentName !== resolvedName ? ` (via alias "${agentName}")` : '';
+        ctx.ui.notify(
+          `❌ Agent "${resolvedName}"${viaAlias} is disabled. Enable it in .pi/slim-agents.json.\n\n${buildAvailableAgentsList(cwd, config)}`,
+          'error',
+        );
+        return;
+      }
+
+      // Run delegation
+      const result = await runAndRecordDelegation(
+        { agent: agentName, task },
+        cwd,
+        config,
+        providerCallStatus?.available ?? false,
+      );
+
+      if (!result.ok) {
+        ctx.ui.notify(`❌ ${result.error}`, 'error');
+        return;
+      }
+
+      const output = result.providerOutput ?? result.prompt;
+      ctx.ui.notify(output, 'info');
+    },
   });
 
   // ── Lightweight routing hint injection ─────────────────────────────
@@ -234,35 +358,14 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
           }
         : undefined;
 
-      // Run delegation with timing
-      const startTime = Date.now();
-      const result = await runDelegation(
+      // Run delegation and record history
+      const result = await runAndRecordDelegation(
         { agent: agentName, task, context, files, mode },
         cwd,
         config,
+        providerCallStatus?.available ?? false,
         providerCtx,
       );
-      const durationMs = Date.now() - startTime;
-
-      // Record delegation history
-      const runnerMode: RunnerMode = config.runnerMode ?? 'prompt-only';
-      const delegationStatus = determineDelegationStatus(result, config);
-      const taskSummary = task.length > 80 ? task.slice(0, 77) + '...' : task;
-      const aliasUsed = result.ok && agentName !== result.agentName;
-
-      historyStore.add({
-        timestamp: startTime,
-        requestedAgent: agentName,
-        resolvedAgent: result.agentName,
-        taskSummary,
-        mode: mode ?? 'normal',
-        runnerMode,
-        status: delegationStatus.status,
-        durationMs,
-        providerCallAvailable: providerCallStatus?.available ?? false,
-        errorReason: delegationStatus.errorReason,
-        aliasUsed,
-      });
 
       // Return result
       if (!result.ok) {

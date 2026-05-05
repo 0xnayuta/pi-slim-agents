@@ -18,6 +18,7 @@ import type {
 } from './types.js';
 import { loadAgents, resolveAgentName } from './agents.js';
 import { isSafeAgentName } from './utils.js';
+import { buildExpectedOutputSection } from './output-template.js';
 import { runProviderDelegation, type ProviderRunnerContext } from './provider-runner.js';
 
 export type { ProviderRunnerContext };
@@ -91,7 +92,7 @@ export async function runDelegation(
   // Default: prompt-only
   return {
     ok: true,
-    prompt: buildDelegationPrompt(agent, params),
+    prompt: buildDelegationPrompt(agent, params, config),
     agentName: agent.name,
     message: `Delegating to @${agent.name} (${agent.role}). ${agent.readonly ? 'This agent is read-only.' : ''}`,
   };
@@ -109,7 +110,7 @@ async function runProviderCallOrFallback(
     // No context available — cannot do provider-call, fall back to prompt-only
     return {
       ok: true,
-      prompt: buildDelegationPrompt(agent, params),
+      prompt: buildDelegationPrompt(agent, params, config),
       agentName: agent.name,
       message: `Provider-call mode requested but no ExtensionContext available. Returning prompt-only for @${agent.name}.`,
     };
@@ -147,12 +148,23 @@ export function formatDelegationResult(result: DelegationResult): string {
 
 // ─── Prompt Builder ─────────────────────────────────────────────────
 
+/**
+ * Build a delegation prompt with optional output template.
+ *
+ * @param config - Used to check outputTemplate setting.
+ */
 export function buildDelegationPrompt(
   agent: AgentDefinition,
   params: DelegateAgentParams,
+  config?: SlimAgentsConfig,
 ): string {
   const files = params.files ?? [];
   const mode = params.mode ?? 'normal';
+  const expectedOutput = buildExpectedOutputSection(
+    agent.name,
+    agent.readonly,
+    config?.outputTemplate,
+  );
   const sections = [
     'Agent',
     `@${agent.name}`,
@@ -176,9 +188,7 @@ export function buildDelegationPrompt(
     agent.body,
     '',
     'Expected Output',
-    agent.readonly
-      ? 'Search, analyze, and report clearly. Do not modify files.'
-      : 'Complete the task and report concise, actionable results.',
+    expectedOutput,
   ];
 
   return sections.join('\n');

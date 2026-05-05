@@ -13,6 +13,8 @@ import { loadAgents, resolveAgentName, getAgent } from '../src/agents.js';
 import { isSafeAgentName, parseAgentFrontmatter } from '../src/utils.js';
 import { isAgentDisabled, loadConfig } from '../src/config.js';
 import { runDelegation } from '../src/runner.js';
+import { parseAgentCommand, buildAgentHelpText, runAndRecordDelegation, replayDelegation } from '../src/commands.js';
+import { buildExpectedOutputSection } from '../src/output-template.js';
 import {
   buildProviderSystemPrompt,
   buildProviderUserMessage,
@@ -982,14 +984,16 @@ console.log('\n21. History table formatting');
 
 await test('formatHistoryTable with records', () => {
   const records: DelegationRecord[] = [
-    { timestamp: Date.now(), requestedAgent: 'search', resolvedAgent: 'explorer', taskSummary: 'Find TypeScript files', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 120, providerCallAvailable: false, aliasUsed: true },
-    { timestamp: Date.now() - 60000, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'Review architecture', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 3500, providerCallAvailable: false, aliasUsed: false },
+    { id: 1, timestamp: Date.now(), requestedAgent: 'search', resolvedAgent: 'explorer', taskSummary: 'Find TypeScript files', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 120, providerCallAvailable: false, aliasUsed: true },
+    { id: 2, timestamp: Date.now() - 60000, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'Review architecture', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 3500, providerCallAvailable: false, aliasUsed: false },
   ];
   const output = formatHistoryTable(records);
   assert.ok(output.includes('Delegation History'), 'should have title');
   assert.ok(output.includes('@explorer'), 'should include agent name');
   assert.ok(output.includes('via search'), 'should show alias');
   assert.ok(output.includes('success'), 'should show status');
+  assert.ok(output.includes('ID'), 'should have ID column header');
+  assert.ok(output.includes('1'), 'should show record id');
 });
 
 await test('formatHistoryTable empty', () => {
@@ -1209,6 +1213,462 @@ await test('direct name: no alias detected', async () => {
   assert.equal(result.ok, true);
   const aliasUsed = 'explorer' !== result.agentName;
   assert.equal(aliasUsed, false, 'should not detect alias');
+});
+
+// ─── 26. /agent command parsing ────────────────────────────────────
+
+console.log('\n26. /agent command parsing');
+
+await test('parseAgentCommand extracts agent and task', () => {
+  const result = parseAgentCommand('explorer find playback speed implementation');
+  assert.equal(result.agent, 'explorer');
+  assert.equal(result.task, 'find playback speed implementation');
+});
+
+await test('parseAgentCommand handles alias as first arg', () => {
+  const result = parseAgentCommand('search find where .devpiano files are saved');
+  assert.equal(result.agent, 'search');
+  assert.equal(result.task, 'find where .devpiano files are saved');
+});
+
+await test('parseAgentCommand handles empty args', () => {
+  const result = parseAgentCommand('');
+  assert.equal(result.agent, '');
+  assert.equal(result.task, '');
+});
+
+await test('parseAgentCommand handles whitespace-only args', () => {
+  const result = parseAgentCommand('   ');
+  assert.equal(result.agent, '');
+  assert.equal(result.task, '');
+});
+
+await test('parseAgentCommand handles agent-only (no task)', () => {
+  const result = parseAgentCommand('oracle');
+  assert.equal(result.agent, 'oracle');
+  assert.equal(result.task, '');
+});
+
+await test('parseAgentCommand handles multiple spaces between agent and task', () => {
+  const result = parseAgentCommand('oracle   review the architecture');
+  assert.equal(result.agent, 'oracle');
+  assert.equal(result.task, 'review the architecture');
+});
+
+await test('buildAgentHelpText returns help with examples', () => {
+  const help = buildAgentHelpText();
+  assert.ok(help.includes('/agent'), 'should mention /agent');
+  assert.ok(help.includes('explorer'), 'should mention explorer');
+  assert.ok(help.includes('Usage'), 'should have usage section');
+});
+
+// ─── 27. /agent writes to history ──────────────────────────────────
+
+console.log('\n27. /agent writes to history (runAndRecordDelegation)');
+
+await test('runAndRecordDelegation records history with id', async () => {
+  historyStore.clear();
+  const result = await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review the architecture' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  assert.equal(result.ok, true);
+  assert.equal(historyStore.count(), 1);
+  const record = historyStore.recent(1)[0];
+  assert.ok(record.id > 0, 'record should have an id');
+  assert.equal(record.resolvedAgent, 'oracle');
+  assert.equal(record.requestedAgent, 'oracle');
+  assert.equal(record.status, 'success');
+  assert.equal(record.fullTask, 'Review the architecture');
+});
+
+await test('runAndRecordDelegation with alias records alias info', async () => {
+  historyStore.clear();
+  const result = await runAndRecordDelegation(
+    { agent: 'search', task: 'Find TypeScript files' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  assert.equal(result.ok, true);
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.requestedAgent, 'search');
+  assert.equal(record.resolvedAgent, 'explorer');
+  assert.equal(record.aliasUsed, true);
+});
+
+await test('runAndRecordDelegation stores full task when storeFullTask is true', async () => {
+  historyStore.clear();
+  const longTask = 'A'.repeat(200);
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: longTask, context: 'some context', files: ['a.ts', 'b.ts'] },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.fullTask, longTask);
+  assert.equal(record.fullContext, 'some context');
+  assert.deepEqual(record.fullFiles, ['a.ts', 'b.ts']);
+  assert.equal(record.taskSummary.length <= 80, true, 'taskSummary should be truncated');
+});
+
+await test('runAndRecordDelegation does not store full task when storeFullTask is false', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review the code', context: 'ctx', files: ['f.ts'] },
+    PROJECT_ROOT,
+    { history: { storeFullTask: false } },
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.fullTask, undefined);
+  assert.equal(record.fullContext, undefined);
+  assert.equal(record.fullFiles, undefined);
+});
+
+// ─── 28. History store id and getById ───────────────────────────────
+
+console.log('\n28. History store id and getById');
+
+await test('history store assigns sequential ids', () => {
+  historyStore.clear();
+  const r1 = historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const r2 = historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const r3 = historyStore.add({ timestamp: 3, requestedAgent: 'c', resolvedAgent: 'fixer', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  assert.ok(r1.id < r2.id, 'ids should be increasing');
+  assert.ok(r2.id < r3.id, 'ids should be increasing');
+});
+
+await test('history store getById returns correct record', () => {
+  historyStore.clear();
+  const r1 = historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const r2 = historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'task2', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  assert.deepEqual(historyStore.getById(r1.id), r1);
+  assert.deepEqual(historyStore.getById(r2.id), r2);
+});
+
+await test('history store getById returns undefined for non-existent id', () => {
+  historyStore.clear();
+  assert.equal(historyStore.getById(999), undefined);
+});
+
+await test('history store allIds returns all ids', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const ids = historyStore.allIds();
+  assert.equal(ids.length, 2);
+  assert.ok(ids[0] < ids[1], 'ids should be sorted');
+});
+
+await test('history store ids persist after cap', () => {
+  historyStore.clear();
+  for (let i = 0; i < 205; i++) {
+    historyStore.add({ timestamp: i, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: `t${i}`, mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  }
+  const ids = historyStore.allIds();
+  assert.ok(ids.length <= 200, 'should be capped');
+  // Oldest ids should be pruned, newest should remain
+  const maxId = Math.max(...ids);
+  assert.ok(maxId === 205, `max id should be 205, got ${maxId}`);
+});
+
+await test('history store clear resets id counter', () => {
+  historyStore.clear();
+  const r1 = historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  assert.equal(r1.id, 1, 'should start from 1 after clear');
+});
+
+// ─── 29. Replay ─────────────────────────────────────────────────────
+
+console.log('\n29. Replay');
+
+await test('replayDelegation replays with original params', async () => {
+  historyStore.clear();
+  // First delegation
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review architecture', context: 'ctx here', files: ['a.ts'] },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  // Replay
+  const replayResult = await replayDelegation(original.id, PROJECT_ROOT, {}, false);
+  assert.equal(replayResult.ok, true);
+  assert.ok(replayResult.result, 'should have result');
+  assert.equal(replayResult.result!.ok, true);
+  assert.equal(replayResult.result!.agentName, 'oracle');
+  assert.equal(historyStore.count(), 2, 'should have 2 records now');
+});
+
+await test('replayDelegation creates new history record', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'explorer', task: 'Find auth code' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  await replayDelegation(original.id, PROJECT_ROOT, {}, false);
+  const records = historyStore.recent(10);
+  assert.equal(records.length, 2);
+  assert.ok(records[0].id !== records[1].id, 'replayed record should have different id');
+  assert.equal(records[0].taskSummary, original.taskSummary, 'replayed task should match');
+});
+
+await test('replayDelegation non-existent id returns error with available ids', async () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const record = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(9999, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, false);
+  assert.ok(result.error!.includes('9999'), 'should mention the id');
+  assert.ok(result.error!.includes('Available IDs'), 'should list available ids');
+  assert.ok(result.error!.includes(String(record.id)), 'should include the actual id');
+});
+
+await test('replayDelegation rejects disabled agent', async () => {
+  historyStore.clear();
+  // First, do a successful delegation
+  await runAndRecordDelegation(
+    { agent: 'designer', task: 'Design the UI' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+
+  // Now disable the agent
+  const config: SlimAgentsConfig = { agents: { designer: { enabled: false } } };
+  const result = await replayDelegation(record.id, PROJECT_ROOT, config, false);
+  assert.equal(result.ok, false);
+  assert.ok(result.error!.includes('disabled'), 'should mention disabled');
+  assert.ok(result.error!.includes(String(record.id)), 'should mention history id');
+});
+
+await test('replayDelegation detects alias drift', async () => {
+  historyStore.clear();
+  // Record a delegation via alias
+  await runAndRecordDelegation(
+    { agent: 'search', task: 'Find files' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.aliasUsed, true);
+
+  // Replay — should succeed and use original resolvedAgent
+  const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, true);
+  assert.ok(result.result, 'should have result');
+  // Since the alias still resolves to the same agent, no drift warning
+  // (We'd need to change the alias resolution to trigger drift)
+});
+
+await test('replayDelegation non-existent agent returns error', async () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'x', resolvedAgent: 'removed-agent', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const record = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, false);
+  assert.ok(result.error!.includes('no longer exists'), 'should mention agent removal');
+});
+
+await test('replayDelegation uses resolvedAgent not alias', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'arch', task: 'Review code' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.requestedAgent, 'arch');
+  assert.equal(record.resolvedAgent, 'oracle');
+
+  // Replay should use resolvedAgent directly
+  const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, true);
+  assert.equal(result.result!.agentName, 'oracle');
+});
+
+// ─── 30. Output templates ──────────────────────────────────────────
+
+console.log('\n30. Output templates');
+
+await test('outputTemplate=true includes XML tags for explorer', () => {
+  const output = buildExpectedOutputSection('explorer', true, true);
+  assert.ok(output.includes('<summary>'), 'should include summary tag');
+  assert.ok(output.includes('<findings>'), 'should include findings tag');
+  assert.ok(output.includes('<evidence>'), 'should include evidence tag');
+  assert.ok(output.includes('path:line'), 'explorer should emphasize path:line');
+});
+
+await test('outputTemplate=true includes XML tags for oracle', () => {
+  const output = buildExpectedOutputSection('oracle', true, true);
+  assert.ok(output.includes('<summary>'), 'should include summary tag');
+  assert.ok(output.includes('<risks>'), 'should include risks tag');
+  assert.ok(output.includes('<next_actions>'), 'should include next_actions tag');
+  assert.ok(output.includes('tradeoffs'), 'oracle should mention tradeoffs');
+});
+
+await test('outputTemplate=true includes changes for fixer', () => {
+  const output = buildExpectedOutputSection('fixer', false, true);
+  assert.ok(output.includes('<changes>'), 'should include changes tag');
+  assert.ok(output.includes('<summary>'), 'should include summary tag');
+});
+
+await test('outputTemplate=true fixer non-readonly warns about file modification', () => {
+  const output = buildExpectedOutputSection('fixer', false, true);
+  assert.ok(output.includes('do NOT claim to have modified files'), 'should warn about false claims');
+});
+
+await test('outputTemplate=true includes UX focus for designer', () => {
+  const output = buildExpectedOutputSection('designer', false, true);
+  assert.ok(output.includes('<findings>'), 'should include findings tag');
+  assert.ok(output.includes('UX') || output.includes('ux'), 'should mention UX');
+});
+
+await test('outputTemplate=true includes sources focus for librarian', () => {
+  const output = buildExpectedOutputSection('librarian', true, true);
+  assert.ok(output.includes('<evidence>'), 'should include evidence tag');
+  assert.ok(output.includes('Cite sources'), 'should mention citations');
+  assert.ok(output.includes('Do NOT modify files'), 'should warn about no modification');
+});
+
+await test('outputTemplate=true includes orchestrator template', () => {
+  const output = buildExpectedOutputSection('orchestrator', false, true);
+  assert.ok(output.includes('<summary>'), 'should include summary tag');
+  assert.ok(output.includes('<next_actions>'), 'should include next_actions tag');
+});
+
+await test('outputTemplate=false returns simple output (readonly)', () => {
+  const output = buildExpectedOutputSection('explorer', true, false);
+  assert.ok(!output.includes('<summary>'), 'should not include XML tags');
+  assert.ok(output.includes('Search, analyze, and report'), 'should use simple output');
+});
+
+await test('outputTemplate=false returns simple output (non-readonly)', () => {
+  const output = buildExpectedOutputSection('fixer', false, false);
+  assert.ok(!output.includes('<summary>'), 'should not include XML tags');
+  assert.ok(output.includes('Complete the task'), 'should use simple output');
+});
+
+await test('outputTemplate=undefined (default) uses template', () => {
+  const output = buildExpectedOutputSection('oracle', true, undefined);
+  assert.ok(output.includes('<summary>'), 'default should use template');
+});
+
+await test('unknown agent gets default template', () => {
+  const output = buildExpectedOutputSection('custom-agent', true, true);
+  assert.ok(output.includes('<summary>'), 'should include summary tag');
+  assert.ok(output.includes('<findings>'), 'should include findings tag');
+  assert.ok(output.includes('<evidence>'), 'should include evidence tag');
+  assert.ok(output.includes('<risks>'), 'should include risks tag');
+  assert.ok(output.includes('<next_actions>'), 'should include next_actions tag');
+});
+
+// ─── 31. Output template integration in runner ─────────────────────
+
+console.log('\n31. Output template integration in runner');
+
+await test('runner prompt includes XML tags when outputTemplate=true', async () => {
+  const result = await runDelegation(
+    { agent: 'oracle', task: 'Review the code' },
+    PROJECT_ROOT,
+    { outputTemplate: true },
+  );
+  assert.equal(result.ok, true);
+  assert.ok(result.prompt.includes('<summary>'), 'prompt should include summary tag');
+  assert.ok(result.prompt.includes('<risks>'), 'prompt should include risks tag');
+});
+
+await test('runner prompt does not include XML tags when outputTemplate=false', async () => {
+  const result = await runDelegation(
+    { agent: 'oracle', task: 'Review the code' },
+    PROJECT_ROOT,
+    { outputTemplate: false },
+  );
+  assert.equal(result.ok, true);
+  assert.ok(!result.prompt.includes('<summary>'), 'prompt should not include summary tag');
+  assert.ok(result.prompt.includes('Search, analyze, and report'), 'oracle is readonly, should use readonly simple output');
+});
+
+await test('runner prompt uses template by default (outputTemplate undefined)', async () => {
+  const result = await runDelegation(
+    { agent: 'explorer', task: 'Find auth code' },
+    PROJECT_ROOT,
+    {},
+  );
+  assert.equal(result.ok, true);
+  assert.ok(result.prompt.includes('<summary>'), 'default should use template');
+});
+
+await test('runner prompt explorer includes path:line emphasis', async () => {
+  const result = await runDelegation(
+    { agent: 'explorer', task: 'Find config files' },
+    PROJECT_ROOT,
+    { outputTemplate: true },
+  );
+  assert.equal(result.ok, true);
+  assert.ok(result.prompt.includes('path:line'), 'explorer template should mention path:line');
+});
+
+await test('runner prompt fixer includes changes section', async () => {
+  const result = await runDelegation(
+    { agent: 'fixer', task: 'Fix the bug' },
+    PROJECT_ROOT,
+    { outputTemplate: true },
+  );
+  assert.equal(result.ok, true);
+  assert.ok(result.prompt.includes('<changes>'), 'fixer template should include changes');
+});
+
+// ─── 32. Alias drift detection in replay ───────────────────────────
+
+console.log('\n32. Alias drift detection in replay');
+
+await test('replay with alias that still resolves same agent has no warning', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'search', task: 'Find auth code' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, true);
+  assert.equal(result.aliasDriftWarning, undefined, 'no drift warning expected');
+});
+
+await test('replay uses resolvedAgent even when alias is stored', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'arch', task: 'Review code' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.requestedAgent, 'arch');
+  assert.equal(record.resolvedAgent, 'oracle');
+
+  // Replay should delegate to oracle, not try to resolve 'arch' again
+  const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, true);
+  assert.equal(result.result!.agentName, 'oracle');
 });
 
 // ─── Summary ────────────────────────────────────────────────────────

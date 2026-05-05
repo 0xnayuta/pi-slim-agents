@@ -185,13 +185,12 @@ export function formatHistoryTable(records: DelegationRecord[]): string {
   }
 
   lines.push(
-    '  #  Time       Agent            Task                             Status     Dur.',
+    '  ID   Time       Agent            Task                             Status     Dur.',
   );
   lines.push('  ' + '─'.repeat(85));
 
-  for (let i = 0; i < records.length; i++) {
-    const r = records[i];
-    const num = String(i + 1).padStart(2);
+  for (const r of records) {
+    const id = String(r.id).padStart(4);
     const time = formatTime(r.timestamp);
     const agent = `@${r.resolvedAgent}`.padEnd(15);
     const task = truncate(r.taskSummary, 30).padEnd(30);
@@ -199,7 +198,7 @@ export function formatHistoryTable(records: DelegationRecord[]): string {
     const dur = formatDuration(r.durationMs).padStart(6);
     const alias = r.aliasUsed ? ` (via ${r.requestedAgent})` : '';
 
-    lines.push(`  ${num}  ${time}   ${agent} ${task}  ${status} ${dur}${alias}`);
+    lines.push(`  ${id} ${time}   ${agent} ${task}  ${status} ${dur}${alias}`);
   }
 
   return lines.join('\n');

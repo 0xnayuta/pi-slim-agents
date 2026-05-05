@@ -4,7 +4,7 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M5) — two runner modes, management commands, delegation history and metrics.**
+**v0.1.0 (M6) — shortcut commands, output templates, and replay-lite.**
 
 | Mode | Behavior |
 |------|----------|
@@ -50,6 +50,25 @@ pi install /path/to/pi-slim-agents
 The package manifest points pi at `./dist/index.js`, so run `pnpm build` before installing from a local path.
 
 ## Usage
+
+### Quick delegation shortcut
+
+The `/agent` command lets users directly call a specialist agent:
+
+```text
+/agent explorer find playback speed implementation
+/agent search find where .devpiano files are saved
+/agent oracle review the playback speed design
+/agent arch check whether this approach is over-engineered
+/agent designer review the controls panel UX
+/agent fixer implement a small null check
+```
+
+- Supports agent names and aliases
+- Task is required; empty task shows help
+- Unknown agent shows available agents list
+- Disabled agent returns a clear error
+- Delegations are recorded in history and metrics
 
 ### List available agents
 
@@ -197,11 +216,21 @@ Standalone fallback: `/agents-reload`
 /agents history
 ```
 
-Shows the 10 most recent delegation records (newest first). Each record includes: timestamp, agent, task summary, status, duration, and whether an alias was used.
+Shows the 10 most recent delegation records (newest first). Each record includes: id, timestamp, agent, task summary, status, duration, and whether an alias was used.
 
 **History is in-memory only** — cleared when the pi session restarts. Full prompts and results are not recorded. API keys are never stored.
 
 Standalone fallback: `/agents-history`
+
+### Replay
+
+```text
+/agents replay <id>
+```
+
+Re-runs a delegation from history using the original parameters. Creates a new history record. If the agent is now disabled or removed, replay is refused with a clear error.
+
+Standalone fallback: `/agents-replay <id>`
 
 ### Metrics
 
@@ -214,6 +243,53 @@ Shows delegation metrics: total count, success/fallback/error breakdown, average
 **Metrics are in-memory only** — cleared on restart. Token usage is shown as "unavailable".
 
 Standalone fallback: `/agents-metrics`
+
+## Output Templates
+
+When `outputTemplate` is enabled (default), delegation prompts include structured output templates using XML-like tags. These are **output conventions**, not strict parsers — they guide the specialist agent to produce structured, easy-to-parse results.
+
+```text
+<summary>
+One-line conclusion
+</summary>
+
+<findings>
+- Key findings
+</findings>
+
+<evidence>
+- File paths, line numbers, config items, documentation references
+</evidence>
+
+<risks>
+- Risks or uncertainties
+</risks>
+
+<next_actions>
+- Suggested next steps
+</next_actions>
+```
+
+### Per-agent variations
+
+| Agent | Emphasis |
+|-------|----------|
+| explorer | `evidence`: precise `path:line` references |
+| librarian | `evidence`: sources, citations; no file modification |
+| oracle | `risks`: tradeoffs, recommendations |
+| fixer | `changes` + `verification`; warns not to claim file modification in prompt-only mode |
+| designer | `findings`: UX observations, visual consistency, interaction risks |
+| orchestrator | `summary` + `next_actions`: routing decisions and plans |
+
+### Disable output templates
+
+```json
+{
+  "outputTemplate": false
+}
+```
+
+When disabled, agents receive simple output instructions instead of structured templates.
 
 ## Runner Modes
 
@@ -365,6 +441,10 @@ If both `enabled` and `disabled` are set, `enabled` takes precedence.
 {
   "runnerMode": "provider-call",
   "defaultModel": "current",
+  "outputTemplate": true,
+  "history": {
+    "storeFullTask": true
+  },
   "agents": {
     "oracle": {
       "temperature": 0.2
@@ -455,7 +535,7 @@ pnpm test
 pnpm pack --dry-run
 ```
 
-The test suite uses `tsx` (no test framework). It covers 115 tests:
+The test suite uses `tsx` (no test framework). It covers 157 tests:
 - All 6 built-in agents load correctly
 - Frontmatter parsing (name, description, readonly, temperature, aliases, enabled)
 - Invalid agent name rejection (spaces, slashes, path traversal, uppercase)
@@ -472,13 +552,18 @@ The test suite uses `tsx` (no test framework). It covers 115 tests:
 - Model resolution (agent > defaultModel > "current")
 - Prompt assembly (task, context, files, mode)
 - Config merge (runnerMode, agent overrides)
-- History store (add, recent, count, clear, max cap)
+- History store (add, recent, count, clear, max cap, id generation, getById)
 - Metrics computation (counts, per-agent, per-runnerMode)
 - determineDelegationStatus (success, fallback, error)
 - Status report (runnerMode, provider-call reason, agent list, secret sanitization)
-- History table and metrics formatting
+- History table and metrics formatting (with ID column)
 - Reload with project-level fixtures, config overrides, error preservation
 - Agent source field (package, project)
+- `/agent` command parsing (agent, alias, empty, whitespace, help text)
+- `runAndRecordDelegation` (history recording, full task storage, storeFullTask config)
+- Replay (success, new record, non-existent id, disabled agent, alias drift, resolvedAgent priority)
+- Output templates (per-agent templates, XML tags, enable/disable, default behavior)
+- Output template integration in runner prompt
 
 ## License
 

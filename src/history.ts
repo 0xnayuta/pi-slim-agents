@@ -26,18 +26,31 @@ export interface MetricsSummary {
 const MAX_HISTORY = 200;
 
 class HistoryStore {
+  private nextId = 1;
   private records: DelegationRecord[] = [];
 
-  add(record: DelegationRecord): void {
-    this.records.push(record);
+  add(record: Omit<DelegationRecord, 'id'>): DelegationRecord {
+    const full: DelegationRecord = { ...record, id: this.nextId++ };
+    this.records.push(full);
     if (this.records.length > MAX_HISTORY) {
       this.records = this.records.slice(-MAX_HISTORY);
     }
+    return full;
   }
 
   /** Get the N most recent records (newest first). */
   recent(n: number = 10): DelegationRecord[] {
     return this.records.slice(-n).reverse();
+  }
+
+  /** Get a record by its id. */
+  getById(id: number): DelegationRecord | undefined {
+    return this.records.find(r => r.id === id);
+  }
+
+  /** Get all record ids (for error messages). */
+  allIds(): number[] {
+    return this.records.map(r => r.id);
   }
 
   count(): number {
@@ -46,6 +59,7 @@ class HistoryStore {
 
   clear(): void {
     this.records = [];
+    this.nextId = 1;
   }
 
   metrics(): MetricsSummary {

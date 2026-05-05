@@ -56,6 +56,27 @@
 - [x] Provider-call investigation documented in `docs/provider-call.md`
 - [x] 115 tests covering all new functionality
 
+## v0.1.0 — M6: Shortcut / Output Template / Replay-lite
+
+**User experience improvements and structured output.**
+
+- [x] `/agent <agent-or-alias> <task...>` shortcut command
+- [x] `/agent` reuses `runDelegation` core logic (no code duplication)
+- [x] `/agent` records history and metrics
+- [x] `/agent` handles empty task (help), unknown agent (available list), disabled agent (clear error)
+- [x] Structured output templates with XML-like tags (`<summary>`, `<findings>`, `<evidence>`, `<risks>`, `<next_actions>`)
+- [x] Per-agent template variations (explorer, librarian, oracle, fixer, designer, orchestrator)
+- [x] `outputTemplate` config toggle (default: true)
+- [x] `/agents replay <id>` — re-run delegation from history
+- [x] `/agents-replay <id>` — standalone fallback
+- [x] History records include auto-incrementing `id`
+- [x] History records include `fullTask`, `fullContext`, `fullFiles` for replay (configurable)
+- [x] `history.storeFullTask` config option (default: true)
+- [x] Replay uses original `resolvedAgent` to prevent alias drift
+- [x] Replay warns if alias now resolves to a different agent
+- [x] Replay refuses disabled/removed agents with clear error
+- [x] 157 tests covering all new functionality
+
 ## v0.2.0 — Planned
 
 **Full provider-call when pi-mono API supports it.**

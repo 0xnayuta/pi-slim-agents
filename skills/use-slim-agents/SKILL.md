@@ -19,6 +19,18 @@ Delegate subtasks to specialist agents for better quality, speed, and focus.
 
 ## How to Use
 
+### Quick shortcut (user-facing)
+
+Users can directly invoke an agent via the `/agent` command:
+
+```
+/agent explorer find playback speed implementation
+/agent arch review the error handling strategy
+/agent fixer add a null check in parseConfig
+```
+
+### Delegation tool (agent-facing)
+
 Use the `delegate_agent` tool to hand off subtasks:
 
 ```
@@ -41,13 +53,21 @@ delegate_agent({
 
 ## When to Delegate
 
-- **Focused work**: Narrow searches, reviews, research, or bounded implementations
-- **Specialist expertise**: Architecture decisions → oracle, docs → librarian
-- **Context isolation**: Keep main context clean by delegating focused tasks
-- **Bounded implementation**: Well-defined code changes → fixer
+- **Codebase search** → `explorer` / `search` / `find`
+- **Docs / library research** → `librarian` / `docs` / `research`
+- **Architecture review / debugging strategy** → `oracle` / `arch` / `review`
+- **UI/UX review** → `designer` / `ui` / `ux`
+- **Small bounded implementation** → `fixer` / `fix` / `implement`
 
 ## When NOT to Delegate
 
-- Simple tasks where you have full context
-- Tasks that require back-and-forth with the user
-- When delegation overhead exceeds doing it yourself
+- **Simple tasks** where you have full context — do them yourself
+- **Tasks requiring user interaction** — handle directly
+- **Quick file lookups** you can do with `read` or `grep` in a few calls
+- **Delegation overhead > benefit** — just do it
+
+## After Delegation
+
+If the delegated task involves code changes or architectural decisions:
+- Use **pi-lsp** or the project's **test suite** to verify the results
+- Don't blindly trust delegation output — validate before integrating

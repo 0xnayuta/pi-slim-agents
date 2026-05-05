@@ -67,6 +67,16 @@ export interface SlimAgentsConfig {
   disabled?: string[];
   /** Additional agent directories to scan. */
   extraAgentDirs?: string[];
+  /** Enable structured output templates in delegation prompts. Default: true. */
+  outputTemplate?: boolean;
+  /** History configuration. */
+  history?: HistoryConfig;
+}
+
+/** History configuration. */
+export interface HistoryConfig {
+  /** Store full task, context, and files for replay. Default: true. */
+  storeFullTask?: boolean;
 }
 
 /** Per-agent override in config. */
@@ -139,6 +149,8 @@ export interface DelegationResult {
 
 /** A record of a single delegation call. */
 export interface DelegationRecord {
+  /** Auto-incrementing record id. */
+  id: number;
   /** Unix timestamp (ms) when the delegation was made. */
   timestamp: number;
   /** The agent name as requested by the user. */
@@ -161,6 +173,12 @@ export interface DelegationRecord {
   errorReason?: string;
   /** Whether an alias was used to resolve the agent. */
   aliasUsed: boolean;
+  /** Full task text (when history.storeFullTask is true). */
+  fullTask?: string;
+  /** Full context text (when history.storeFullTask is true). */
+  fullContext?: string;
+  /** Full files list (when history.storeFullTask is true). */
+  fullFiles?: string[];
 }
 
 // ─── Agent Loader ───────────────────────────────────────────────────

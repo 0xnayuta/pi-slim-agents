@@ -18,6 +18,7 @@
  */
 
 import type { AgentDefinition, DelegationResult, DelegateAgentParams, ProviderCallMeta, SlimAgentsConfig } from './types.js';
+import { buildExpectedOutputSection } from './output-template.js';
 
 // ─── Lazy pi-ai import ──────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ export function buildProviderSystemPrompt(agent: AgentDefinition): string {
 /**
  * Build the user message for a provider-call delegation.
  */
-export function buildProviderUserMessage(params: DelegateAgentParams): string {
+export function buildProviderUserMessage(params: DelegateAgentParams, config?: SlimAgentsConfig): string {
   const files = params.files ?? [];
   const mode = params.mode ?? 'normal';
 
@@ -144,6 +145,15 @@ export function buildProviderUserMessage(params: DelegateAgentParams): string {
     normal: 'Balanced answer — adequate depth, stay concise.',
     deep: 'Thorough analysis — consider edge cases and tradeoffs.',
   };
+
+  // We need agent name to build the output template, but it's not in params.
+  // The caller should pass it via a wrapper. For now, use a generic template
+  // based on readonly (which we don't have here either).
+  // The output template is primarily used in the prompt-only path; for provider-call,
+  // the system prompt already sets expectations. We include a simple version here.
+  const expectedOutput = config?.outputTemplate !== false
+    ? 'Provide a clear, structured response using <summary>, <findings>, <evidence>, <risks>, <next_actions> sections as applicable.'
+    : 'Provide a clear, structured response that the main agent can directly use.';
 
   const sections = [
     `## Task`,
@@ -159,7 +169,7 @@ export function buildProviderUserMessage(params: DelegateAgentParams): string {
     `${mode} — ${modeDescription[mode] ?? modeDescription.normal}`,
     '',
     `## Expected Output`,
-    'Provide a clear, structured response that the main agent can directly use.',
+    expectedOutput,
   ];
 
   return sections.join('\n');
@@ -241,7 +251,7 @@ export async function runProviderDelegation(
     messages: [
       {
         role: 'user',
-        content: buildProviderUserMessage(params),
+        content: buildProviderUserMessage(params, config),
         timestamp: Date.now(),
       },
     ],
