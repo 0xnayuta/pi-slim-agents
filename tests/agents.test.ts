@@ -1320,12 +1320,26 @@ await test('runAndRecordDelegation does not store full task when storeFullTask i
   await runAndRecordDelegation(
     { agent: 'oracle', task: 'Review the code', context: 'ctx', files: ['f.ts'] },
     PROJECT_ROOT,
-    { history: { storeFullTask: false } },
+    { history: { storeFullTask: false, storeFullContext: false } },
     false,
   );
   const record = historyStore.recent(1)[0];
   assert.equal(record.fullTask, undefined);
   assert.equal(record.fullContext, undefined);
+  assert.equal(record.fullFiles, undefined);
+});
+
+await test('runAndRecordDelegation stores context independently with storeFullContext', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review the code', context: 'ctx here', files: ['f.ts'] },
+    PROJECT_ROOT,
+    { history: { storeFullTask: false, storeFullContext: true } },
+    false,
+  );
+  const record = historyStore.recent(1)[0];
+  assert.equal(record.fullTask, undefined);
+  assert.equal(record.fullContext, 'ctx here');
   assert.equal(record.fullFiles, undefined);
 });
 
@@ -1669,6 +1683,553 @@ await test('replay uses resolvedAgent even when alias is stored', async () => {
   const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
   assert.equal(result.ok, true);
   assert.equal(result.result!.agentName, 'oracle');
+});
+
+// ─── 33. /agent mode parsing ──────────────────────────────────────
+
+console.log('\n33. /agent mode parsing');
+
+await test('parseAgentCommand with --mode deep', () => {
+  const result = parseAgentCommand('--mode deep oracle review this design');
+  assert.equal(result.agent, 'oracle');
+  assert.equal(result.task, 'review this design');
+  assert.equal(result.mode, 'deep');
+  assert.equal(result.modeError, undefined);
+});
+
+await test('parseAgentCommand with -m quick', () => {
+  const result = parseAgentCommand('-m quick explorer find playback code');
+  assert.equal(result.agent, 'explorer');
+  assert.equal(result.task, 'find playback code');
+  assert.equal(result.mode, 'quick');
+});
+
+await test('parseAgentCommand with mode in middle', () => {
+  const result = parseAgentCommand('oracle --mode deep review this design');
+  assert.equal(result.agent, 'oracle');
+  assert.equal(result.task, 'review this design');
+  assert.equal(result.mode, 'deep');
+});
+
+await test('parseAgentCommand with invalid mode returns error', () => {
+  const result = parseAgentCommand('--mode turbo oracle review this');
+  assert.ok(result.modeError, 'should have modeError');
+  assert.ok(result.modeError!.includes('turbo'), 'should mention invalid mode');
+  assert.ok(result.modeError!.includes('quick'), 'should list valid modes');
+});
+
+await test('parseAgentCommand without mode defaults to undefined', () => {
+  const result = parseAgentCommand('oracle review this design');
+  assert.equal(result.agent, 'oracle');
+  assert.equal(result.task, 'review this design');
+  assert.equal(result.mode, undefined);
+});
+
+await test('parseAgentCommand with alias and mode', () => {
+  const result = parseAgentCommand('--mode deep arch review this design');
+  assert.equal(result.agent, 'arch');
+  assert.equal(result.task, 'review this design');
+  assert.equal(result.mode, 'deep');
+});
+
+await test('parseAgentCommand mode only (no agent)', () => {
+  const result = parseAgentCommand('--mode deep');
+  assert.equal(result.agent, '');
+  assert.equal(result.task, '');
+  assert.equal(result.mode, 'deep');
+});
+
+await test('parseAgentCommand with quoted task', () => {
+  const result = parseAgentCommand('--mode deep oracle "review this design carefully"');
+  assert.equal(result.agent, 'oracle');
+  assert.equal(result.task, 'review this design carefully');
+  assert.equal(result.mode, 'deep');
+});
+
+// ─── 34. History filter ────────────────────────────────────────────
+
+console.log('\n34. History filter');
+
+await test('filter by agent (resolvedAgent match)', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'search', resolvedAgent: 'explorer', taskSummary: 'task2', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: true });
+  historyStore.add({ timestamp: 3, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'task3', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ agent: 'oracle' });
+  assert.equal(filtered.length, 2);
+  assert.ok(filtered.every(r => r.resolvedAgent === 'oracle'));
+});
+
+await test('filter by requestedAgent (alias match)', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'search', resolvedAgent: 'explorer', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: true });
+  historyStore.add({ timestamp: 2, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'task2', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ agent: 'search' });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].requestedAgent, 'search');
+});
+
+await test('filter by status', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'error', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ status: 'error' });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].status, 'error');
+});
+
+await test('filter by runnerMode', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'oracle', taskSummary: '', mode: 'normal', runnerMode: 'provider-call', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ runnerMode: 'provider-call' });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].runnerMode, 'provider-call');
+});
+
+await test('filter by mode', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: '', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'oracle', taskSummary: '', mode: 'quick', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ mode: 'deep' });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].mode, 'deep');
+});
+
+await test('filter by query (task match)', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'Review authentication module', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'Find playback code', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ query: 'playback' });
+  assert.equal(filtered.length, 1);
+  assert.ok(filtered[0].taskSummary.includes('playback'));
+});
+
+await test('filter by query (agent name match)', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'Review code', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'Find files', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ query: 'oracle' });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].resolvedAgent, 'oracle');
+});
+
+await test('filter query is case-insensitive', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'Review Authentication', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ query: 'authentication' });
+  assert.equal(filtered.length, 1);
+});
+
+await test('filter limit works', () => {
+  historyStore.clear();
+  for (let i = 0; i < 20; i++) {
+    historyStore.add({ timestamp: i, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: `task ${i}`, mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  }
+
+  const filtered = historyStore.filter({ limit: 5 });
+  assert.equal(filtered.length, 5);
+  // Should be newest first
+  assert.ok(filtered[0].taskSummary.includes('19'));
+});
+
+await test('filter default limit is 10', () => {
+  historyStore.clear();
+  for (let i = 0; i < 20; i++) {
+    historyStore.add({ timestamp: i, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: `task ${i}`, mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  }
+
+  const filtered = historyStore.filter({});
+  assert.equal(filtered.length, 10);
+});
+
+await test('filter limit capped at 100', () => {
+  historyStore.clear();
+  for (let i = 0; i < 150; i++) {
+    historyStore.add({ timestamp: i, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: `task ${i}`, mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  }
+
+  const filtered = historyStore.filter({ limit: 200 });
+  assert.ok(filtered.length <= 100, `should be capped at 100, got ${filtered.length}`);
+});
+
+await test('filter returns empty for no match', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ agent: 'nonexistent' });
+  assert.equal(filtered.length, 0);
+});
+
+await test('filter combines multiple criteria', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'Review auth', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'oracle', taskSummary: 'Review code', mode: 'quick', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 3, requestedAgent: 'c', resolvedAgent: 'explorer', taskSummary: 'Find auth files', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const filtered = historyStore.filter({ agent: 'oracle', mode: 'deep' });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].resolvedAgent, 'oracle');
+  assert.equal(filtered[0].mode, 'deep');
+});
+
+// ─── 35. Replay with modifications ────────────────────────────────
+
+console.log('\n35. Replay with modifications');
+
+await test('replay with mode override', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code', mode: 'normal' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+  assert.equal(original.mode, 'normal');
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false, undefined, { mode: 'deep' });
+  assert.equal(result.ok, true);
+  assert.ok(result.modifications, 'should have modifications');
+  assert.ok(result.modifications!.some(m => m.includes('mode')), 'should mention mode change');
+
+  const replayed = historyStore.recent(1)[0];
+  assert.equal(replayed.mode, 'deep');
+  assert.equal(replayed.replayOf, original.id);
+});
+
+await test('replay with agent override', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false, undefined, { agent: 'explorer' });
+  assert.equal(result.ok, true);
+  assert.equal(result.originalAgent, 'oracle');
+  assert.equal(result.newAgent, 'explorer');
+
+  const replayed = historyStore.recent(1)[0];
+  assert.equal(replayed.resolvedAgent, 'explorer');
+  assert.equal(replayed.replayOf, original.id);
+});
+
+await test('replay with task override', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false, undefined, { task: 'Review error handling' });
+  assert.equal(result.ok, true);
+  assert.ok(result.modifications!.some(m => m.includes('task')));
+
+  const replayed = historyStore.recent(1)[0];
+  assert.equal(replayed.fullTask, 'Review error handling');
+});
+
+await test('replay records replayOf', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  await replayDelegation(original.id, PROJECT_ROOT, {}, false);
+  const replayed = historyStore.recent(1)[0];
+  assert.equal(replayed.replayOf, original.id);
+});
+
+await test('replay with agent override resolves alias', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false, undefined, { agent: 'arch' });
+  assert.equal(result.ok, true);
+  assert.equal(result.newAgent, 'oracle'); // arch resolves to oracle
+});
+
+await test('replay with invalid agent override returns error', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false, undefined, { agent: 'nonexistent' });
+  assert.equal(result.ok, false);
+  assert.ok(result.error!.includes('not found'));
+});
+
+await test('replay with agent override to disabled agent returns error', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code' },
+    PROJECT_ROOT,
+    {},
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const config: SlimAgentsConfig = { agents: { designer: { enabled: false } } };
+  const result = await replayDelegation(original.id, PROJECT_ROOT, config, false, undefined, { agent: 'designer' });
+  assert.equal(result.ok, false);
+  assert.ok(result.error!.includes('disabled'));
+});
+
+await test('replay without overrides uses original params', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review architecture', context: 'ctx', files: ['a.ts'], mode: 'deep' },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false);
+  assert.equal(result.ok, true);
+  assert.equal(result.modifications, undefined, 'no modifications');
+
+  const replayed = historyStore.recent(1)[0];
+  assert.equal(replayed.resolvedAgent, 'oracle');
+  assert.equal(replayed.mode, 'deep');
+  assert.equal(replayed.fullTask, 'Review architecture');
+  assert.equal(replayed.fullContext, 'ctx');
+  assert.deepEqual(replayed.fullFiles, ['a.ts']);
+});
+
+await test('replay with context and files override', async () => {
+  historyStore.clear();
+  await runAndRecordDelegation(
+    { agent: 'oracle', task: 'Review code', context: 'old ctx', files: ['old.ts'] },
+    PROJECT_ROOT,
+    { history: { storeFullTask: true } },
+    false,
+  );
+  const original = historyStore.recent(1)[0];
+
+  const result = await replayDelegation(original.id, PROJECT_ROOT, {}, false, undefined, {
+    context: 'new context',
+    files: ['new1.ts', 'new2.ts'],
+  });
+  assert.equal(result.ok, true);
+  assert.ok(result.modifications!.some(m => m.includes('context')));
+  assert.ok(result.modifications!.some(m => m.includes('files')));
+
+  const replayed = historyStore.recent(1)[0];
+  assert.equal(replayed.fullContext, 'new context');
+  assert.deepEqual(replayed.fullFiles, ['new1.ts', 'new2.ts']);
+});
+
+// ─── 36. Export history ───────────────────────────────────────────
+
+console.log('\n36. Export history');
+
+await test('exportJson returns valid JSON', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const json = historyStore.exportJson();
+  const parsed = JSON.parse(json);
+  assert.ok(Array.isArray(parsed));
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].resolvedAgent, 'oracle');
+});
+
+await test('exportJson strips fullTask/fullContext/fullFiles', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false, fullTask: 'secret task', fullContext: 'secret ctx', fullFiles: ['secret.ts'] });
+
+  const json = historyStore.exportJson();
+  const parsed = JSON.parse(json);
+  assert.equal(parsed[0].fullTask, undefined);
+  assert.equal(parsed[0].fullContext, undefined);
+  assert.equal(parsed[0].fullFiles, undefined);
+});
+
+await test('exportJson includes taskSummary', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'Review auth', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const json = historyStore.exportJson();
+  const parsed = JSON.parse(json);
+  assert.equal(parsed[0].taskSummary, 'Review auth');
+});
+
+await test('exportJson with filter', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'task2', mode: 'normal', runnerMode: 'prompt-only', status: 'error', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const json = historyStore.exportJson({ status: 'error' });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].status, 'error');
+});
+
+await test('exportJson includes replayOf', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task2', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false, replayOf: 1 });
+
+  const json = historyStore.exportJson();
+  const parsed = JSON.parse(json);
+  const replayRecord = parsed.find((r: any) => r.replayOf !== undefined);
+  assert.ok(replayRecord, 'should have replay record');
+  assert.equal(replayRecord.replayOf, 1);
+});
+
+await test('exportJson with mode filter', () => {
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'b', resolvedAgent: 'oracle', taskSummary: 'task2', mode: 'quick', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+
+  const json = historyStore.exportJson({ mode: 'deep' });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].mode, 'deep');
+});
+
+// ─── 37. Persistent history ───────────────────────────────────────
+
+console.log('\n37. Persistent history');
+
+await test('persistent history init loads from JSONL file', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const historyPath = path.join(tmpDir, '.pi', 'slim-agents', 'history.jsonl');
+    fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+
+    // Write test records
+    const record1 = { id: 1, timestamp: 1000, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false };
+    const record2 = { id: 2, timestamp: 2000, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'task2', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 200, providerCallAvailable: false, aliasUsed: false, replayOf: 1 };
+    fs.writeFileSync(historyPath, JSON.stringify(record1) + '\n' + JSON.stringify(record2) + '\n');
+
+    // Create a fresh store and init
+    const testStore = new (historyStore.constructor as any)();
+    testStore.init(tmpDir, { persistent: true, path: '.pi/slim-agents/history.jsonl' });
+
+    assert.equal(testStore.count(), 2);
+    const recent = testStore.recent(10);
+    assert.equal(recent[0].taskSummary, 'task2'); // newest first
+    assert.equal(recent[0].replayOf, 1);
+    assert.equal(recent[1].taskSummary, 'task1');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('persistent history appends new records to JSONL', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const historyPath = path.join(tmpDir, 'history.jsonl');
+
+    const testStore = new (historyStore.constructor as any)();
+    testStore.init(tmpDir, { persistent: true, path: 'history.jsonl' });
+
+    testStore.add({ timestamp: 1000, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 'task1', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+    testStore.add({ timestamp: 2000, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'task2', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 200, providerCallAvailable: false, aliasUsed: false });
+
+    assert.equal(testStore.count(), 2);
+    assert.ok(fs.existsSync(historyPath), 'JSONL file should exist');
+
+    const content = fs.readFileSync(historyPath, 'utf-8');
+    const lines = content.split('\n').filter(l => l.trim());
+    assert.equal(lines.length, 2);
+
+    const parsed1 = JSON.parse(lines[0]);
+    assert.equal(parsed1.taskSummary, 'task1');
+    const parsed2 = JSON.parse(lines[1]);
+    assert.equal(parsed2.taskSummary, 'task2');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('persistent history retention enforced on load', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const historyPath = path.join(tmpDir, 'history.jsonl');
+
+    // Write 5 records
+    let content = '';
+    for (let i = 1; i <= 5; i++) {
+      content += JSON.stringify({ id: i, timestamp: i * 1000, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: `task${i}`, mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false }) + '\n';
+    }
+    fs.writeFileSync(historyPath, content);
+
+    // Init with retention=3
+    const testStore = new (historyStore.constructor as any)();
+    testStore.init(tmpDir, { persistent: true, path: 'history.jsonl', retention: 3 });
+
+    assert.equal(testStore.count(), 3);
+    const recent = testStore.recent(10);
+    assert.equal(recent[0].taskSummary, 'task5'); // newest
+    assert.equal(recent[2].taskSummary, 'task3'); // oldest kept
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('persistent history init is no-op when not enabled', () => {
+  const testStore = new (historyStore.constructor as any)();
+  testStore.init('/tmp', { persistent: false });
+  // Should not throw and should not load anything
+  assert.equal(testStore.count(), 0);
+});
+
+await test('persistent history write failure does not throw', () => {
+  const testStore = new (historyStore.constructor as any)();
+  // Init with invalid path (read-only directory)
+  testStore.init('/proc', { persistent: true, path: 'history.jsonl' });
+  // Should not throw even though /proc is read-only
+  testStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  assert.equal(testStore.count(), 1); // Still added to memory
+});
+
+await test('persistent history nextId continues from loaded records', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const historyPath = path.join(tmpDir, 'history.jsonl');
+    fs.writeFileSync(historyPath, JSON.stringify({ id: 5, timestamp: 1000, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false }) + '\n');
+
+    const testStore = new (historyStore.constructor as any)();
+    testStore.init(tmpDir, { persistent: true, path: 'history.jsonl' });
+
+    const newRecord = testStore.add({ timestamp: 2000, requestedAgent: 'b', resolvedAgent: 'explorer', taskSummary: 'new', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+    assert.equal(newRecord.id, 6, 'should continue from max id + 1');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 // ─── Summary ────────────────────────────────────────────────────────

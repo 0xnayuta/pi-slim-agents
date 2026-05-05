@@ -4,7 +4,7 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M6) — shortcut commands, output templates, and replay-lite.**
+**v0.1.0 (M7) — history/replay usability, /agent mode, persistent history.**
 
 | Mode | Behavior |
 |------|----------|
@@ -63,6 +63,19 @@ The `/agent` command lets users directly call a specialist agent:
 /agent designer review the controls panel UX
 /agent fixer implement a small null check
 ```
+
+**With mode flag:**
+
+```text
+/agent --mode deep oracle review the architecture
+/agent -m quick explorer find playback code
+/agent --mode normal designer review the UI flow
+```
+
+Modes:
+- `quick` — Fast, brief answers
+- `normal` — Balanced depth (default)
+- `deep` — Thorough analysis with edge cases
 
 - Supports agent names and aliases
 - Task is required; empty task shows help
@@ -216,9 +229,36 @@ Standalone fallback: `/agents-reload`
 /agents history
 ```
 
-Shows the 10 most recent delegation records (newest first). Each record includes: id, timestamp, agent, task summary, status, duration, and whether an alias was used.
+Shows the 10 most recent delegation records (newest first). Each record includes: id, timestamp, agent, task summary, mode, status, duration, and whether an alias was used.
 
-**History is in-memory only** — cleared when the pi session restarts. Full prompts and results are not recorded. API keys are never stored.
+**Filter history:**
+
+```text
+/agents history --agent oracle
+/agents history --status error
+/agents history --mode deep
+/agents history --runner provider-call
+/agents history --limit 20
+/agents history --query playback
+```
+
+Filters can be combined:
+
+```text
+/agents history --agent oracle --status error --mode deep
+```
+
+Filter options:
+- `--agent <name>` — filter by agent (matches requested or resolved agent)
+- `--status <status>` — filter by status: success, fallback, error
+- `--mode <mode>` — filter by delegation mode: quick, normal, deep
+- `--runner <mode>` — filter by runner mode: prompt-only, provider-call
+- `--limit <n>` — max results (default 10, max 100)
+- `--query <text>` — case-insensitive search in task, agent names, and context
+
+**History is in-memory by default** — cleared when the pi session restarts. See [Persistent History](#persistent-history) for optional file-based persistence.
+
+Full prompts and results are not recorded. API keys are never stored.
 
 Standalone fallback: `/agents-history`
 
@@ -228,9 +268,33 @@ Standalone fallback: `/agents-history`
 /agents replay <id>
 ```
 
-Re-runs a delegation from history using the original parameters. Creates a new history record. If the agent is now disabled or removed, replay is refused with a clear error.
+Re-runs a delegation from history using the original parameters. Creates a new history record.
 
-Standalone fallback: `/agents-replay <id>`
+**Replay with modifications:**
+
+```text
+/agents replay 5 --mode deep
+/agents replay 5 --agent oracle
+/agents replay 5 --task "review this again with focus on error handling"
+/agents replay 5 --context "new context"
+/agents replay 5 --files src/a.ts,src/b.ts
+```
+
+Modifications can be combined:
+
+```text
+/agents replay 5 --mode deep --agent oracle --task "focused review"
+```
+
+Replay behavior:
+- Original parameters are used unless overridden
+- Original `resolvedAgent` is preferred (avoids alias drift)
+- If overriding agent: alias resolution and enabled/disabled checks apply
+- New history record is created with `replayOf` referencing the original
+- Output shows original agent, new agent, and modified fields
+- If the original agent is disabled or removed, replay is refused
+
+Standalone fallback: `/agents-replay <id> [--mode <mode>] [--agent <agent>] [--task <task>]`
 
 ### Metrics
 
@@ -243,6 +307,65 @@ Shows delegation metrics: total count, success/fallback/error breakdown, average
 **Metrics are in-memory only** — cleared on restart. Token usage is shown as "unavailable".
 
 Standalone fallback: `/agents-metrics`
+
+### Export History
+
+```text
+/agents export-history
+```
+
+Exports delegation history as JSON. Supports the same filters as `/agents history`:
+
+```text
+/agents export-history --agent oracle
+/agents export-history --status error
+/agents export-history --mode deep
+```
+
+The export:
+- Strips full task, context, and files for privacy
+- Includes task summaries, agent names, status, mode, duration
+- Supports `replayOf` field for replayed records
+
+Standalone fallback: `/agents-history-export`
+
+## Persistent History
+
+By default, history is in-memory only. To persist history across sessions:
+
+```json
+{
+  "history": {
+    "persistent": true,
+    "path": ".pi/slim-agents/history.jsonl",
+    "retention": 200,
+    "storeFullTask": true,
+    "storeFullContext": false
+  }
+}
+```
+
+Configuration options:
+- `persistent` — Enable file-based JSONL history (default: `false`)
+- `path` — Path for the JSONL file, relative to project root (default: `.pi/slim-agents/history.jsonl`)
+- `retention` — Maximum records to keep (default: 200)
+- `storeFullTask` — Store full task text for replay (default: `true`)
+- `storeFullContext` — Store full context text (default: `true`)
+
+**Privacy notes:**
+- Full agent results are never stored
+- API keys are never stored
+- Full prompts are not stored
+- `storeFullContext` controls whether context is persisted
+- Write failures do not affect delegation — only a warning is logged
+
+**Gitignore recommendation:**
+
+Add to `.gitignore`:
+```
+# pi-slim-agents persistent history
+.pi/slim-agents/history.jsonl
+```
 
 ## Output Templates
 
@@ -443,7 +566,11 @@ If both `enabled` and `disabled` are set, `enabled` takes precedence.
   "defaultModel": "current",
   "outputTemplate": true,
   "history": {
-    "storeFullTask": true
+    "storeFullTask": true,
+    "storeFullContext": false,
+    "persistent": false,
+    "path": ".pi/slim-agents/history.jsonl",
+    "retention": 200
   },
   "agents": {
     "oracle": {
@@ -513,6 +640,8 @@ See [docs/provider-call.md](docs/provider-call.md) for the full investigation an
 This version intentionally does **not** support:
 
 - Real model calls via provider-call (falls back to prompt-only)
+- Agent-to-agent delegation
+- Provider-call streaming
 - Provider-call streaming
 - Spawning pi subprocesses or child processes
 - True background agents or parallel execution
@@ -522,7 +651,7 @@ This version intentionally does **not** support:
 - Session resume for delegated agents
 - MCP integration
 - Automatic code modification by delegated agents
-- Persistent delegation history (in-memory only, cleared on restart)
+- Persistent delegation history (in-memory by default; optional JSONL persistence)
 - Real token usage statistics
 
 ## Development
@@ -535,7 +664,7 @@ pnpm test
 pnpm pack --dry-run
 ```
 
-The test suite uses `tsx` (no test framework). It covers 157 tests:
+The test suite uses `tsx` (no test framework). It covers 200 tests:
 - All 6 built-in agents load correctly
 - Frontmatter parsing (name, description, readonly, temperature, aliases, enabled)
 - Invalid agent name rejection (spaces, slashes, path traversal, uppercase)
@@ -556,14 +685,19 @@ The test suite uses `tsx` (no test framework). It covers 157 tests:
 - Metrics computation (counts, per-agent, per-runnerMode)
 - determineDelegationStatus (success, fallback, error)
 - Status report (runnerMode, provider-call reason, agent list, secret sanitization)
-- History table and metrics formatting (with ID column)
+- History table and metrics formatting (with ID column, mode column, replayOf indicator)
 - Reload with project-level fixtures, config overrides, error preservation
 - Agent source field (package, project)
 - `/agent` command parsing (agent, alias, empty, whitespace, help text)
-- `runAndRecordDelegation` (history recording, full task storage, storeFullTask config)
+- `runAndRecordDelegation` (history recording, full task storage, storeFullTask/storeFullContext config)
 - Replay (success, new record, non-existent id, disabled agent, alias drift, resolvedAgent priority)
 - Output templates (per-agent templates, XML tags, enable/disable, default behavior)
 - Output template integration in runner prompt
+- `/agent` mode parsing (--mode, -m, invalid mode, alias+mode, quoted task)
+- History filter (by agent, status, runnerMode, mode, query, limit, combined criteria)
+- Replay with modifications (mode, agent, task, context, files overrides; replayOf; disabled agent)
+- Export history (JSON output, privacy stripping, filter support, replayOf included)
+- Persistent history (JSONL load, append, retention, nextId, no-op when disabled, write failure resilience)
 
 ## License
 

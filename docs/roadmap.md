@@ -77,6 +77,44 @@
 - [x] Replay refuses disabled/removed agents with clear error
 - [x] 157 tests covering all new functionality
 
+## v0.1.0 — M7: History / Replay Usability
+
+**Enhanced history/replay with mode, filters, modifications, and persistence.**
+
+- [x] `/agent --mode <mode>` and `/agent -m <mode>` flag support
+- [x] Mode validation: quick, normal, deep
+- [x] Invalid mode returns clear error with valid mode list
+- [x] Mode flows through delegation, history, and metrics
+- [x] `/agents history --agent <name>` filter
+- [x] `/agents history --status <status>` filter
+- [x] `/agents history --mode <mode>` filter
+- [x] `/agents history --runner <mode>` filter
+- [x] `/agents history --limit <n>` (default 10, max 100)
+- [x] `/agents history --query <text>` case-insensitive search
+- [x] Filters can be combined
+- [x] Empty filter results show clear message
+- [x] `/agents replay <id> --mode <mode>` override
+- [x] `/agents replay <id> --agent <agent>` override (with alias resolution)
+- [x] `/agents replay <id> --task <task>` override
+- [x] `/agents replay <id> --context <context>` override
+- [x] `/agents replay <id> --files <f1,f2>` override
+- [x] Replay `replayOf` field in history records
+- [x] Replay shows original agent, new agent, and modified fields
+- [x] Replay with agent override checks enabled/disabled
+- [x] `/agents export-history` — export filtered history as JSON
+- [x] `/agents-history-export` — standalone fallback
+- [x] Export strips full task/context/files for privacy
+- [x] Optional persistent JSONL history (`history.persistent`)
+- [x] Persistent history load on session start
+- [x] Persistent history append on each delegation
+- [x] Retention enforcement (configurable, default 200)
+- [x] Write failures do not affect delegation
+- [x] History table shows mode column and replayOf indicator
+- [x] `storeFullContext` config for independent context storage
+- [x] `parseFlags` utility for CLI-style argument parsing
+- [x] Standalone commands support filter args
+- [x] 200 tests covering all new functionality
+
 ## v0.2.0 — Planned
 
 **Full provider-call when pi-mono API supports it.**
@@ -91,7 +129,6 @@
 **Enhanced delegation and agent capabilities.**
 
 - [ ] Agent dependency resolution (agent A can call agent B)
-- [ ] Persistent delegation history (file-based)
 - [ ] Agent templates for common patterns (reviewer, tester, documenter)
 - [ ] Agent composition (combine agents for complex workflows)
 

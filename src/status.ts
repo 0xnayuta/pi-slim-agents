@@ -185,20 +185,22 @@ export function formatHistoryTable(records: DelegationRecord[]): string {
   }
 
   lines.push(
-    '  ID   Time       Agent            Task                             Status     Dur.',
+    '  ID   Time       Agent            Task                  Mode    Status     Dur.',
   );
-  lines.push('  ' + '─'.repeat(85));
+  lines.push('  ' + '─'.repeat(78));
 
   for (const r of records) {
     const id = String(r.id).padStart(4);
     const time = formatTime(r.timestamp);
     const agent = `@${r.resolvedAgent}`.padEnd(15);
-    const task = truncate(r.taskSummary, 30).padEnd(30);
+    const task = truncate(r.taskSummary, 22).padEnd(22);
+    const mode = r.mode.padEnd(6);
     const status = r.status.padEnd(9);
     const dur = formatDuration(r.durationMs).padStart(6);
     const alias = r.aliasUsed ? ` (via ${r.requestedAgent})` : '';
+    const replay = r.replayOf ? ` (replay #${r.replayOf})` : '';
 
-    lines.push(`  ${id} ${time}   ${agent} ${task}  ${status} ${dur}${alias}`);
+    lines.push(`  ${id} ${time}   ${agent} ${task}  ${mode}  ${status} ${dur}${alias}${replay}`);
   }
 
   return lines.join('\n');

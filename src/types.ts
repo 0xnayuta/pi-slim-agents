@@ -75,8 +75,16 @@ export interface SlimAgentsConfig {
 
 /** History configuration. */
 export interface HistoryConfig {
-  /** Store full task, context, and files for replay. Default: true. */
+  /** Store full task for replay. Default: true. */
   storeFullTask?: boolean;
+  /** Store full context for replay. Default: true. */
+  storeFullContext?: boolean;
+  /** Enable persistent JSONL history. Default: false. */
+  persistent?: boolean;
+  /** Path for persistent history file (relative to cwd). Default: '.pi/slim-agents/history.jsonl'. */
+  path?: string;
+  /** Maximum records to keep. Default: 200. */
+  retention?: number;
 }
 
 /** Per-agent override in config. */
@@ -179,6 +187,8 @@ export interface DelegationRecord {
   fullContext?: string;
   /** Full files list (when history.storeFullTask is true). */
   fullFiles?: string[];
+  /** If this record was created by replay, the original record id. */
+  replayOf?: number;
 }
 
 // ─── Agent Loader ───────────────────────────────────────────────────

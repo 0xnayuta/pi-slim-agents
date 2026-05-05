@@ -24,7 +24,7 @@ import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
 import { formatDelegationResult, type ProviderRunnerContext } from './runner.js';
 import { isProviderCallAvailable } from './provider-runner.js';
-import { historyStore } from './history.js';
+import { historyStore, type HistoryFilter } from './history.js';
 import {
   buildStatusReport,
   formatStatusReport,
@@ -39,8 +39,10 @@ import {
   buildAvailableAgentsList,
   runAndRecordDelegation,
   replayDelegation,
+  parseReplayArgs,
+  parseFlags,
 } from './commands.js';
-import type { DelegateAgentParams, SlimAgentsConfig } from './types.js';
+import type { DelegateAgentParams, RunnerMode, SlimAgentsConfig } from './types.js';
 
 // ─── Extension Factory ──────────────────────────────────────────────
 
@@ -59,6 +61,8 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     config = loadConfig(cwd);
     providerCallStatus = await isProviderCallAvailable();
     lastReloadTime = new Date().toISOString();
+
+    historyStore.init(cwd, config.history);
 
     const agents = loadAgents(cwd, config);
     ctx.ui.setStatus('slim-agents', `agents: ${agents.length}`);
@@ -91,8 +95,43 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     ctx.ui.notify(formatReloadResult(result, reloadTime), result.ok ? 'info' : 'error');
   }
 
-  async function handleHistory(ctx: any) {
-    const records = historyStore.recent(10);
+  async function handleHistory(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
+    const hasFilters = Object.keys(flags).length > 0;
+
+    let records;
+
+    if (!hasFilters) {
+      records = historyStore.recent(10);
+    } else {
+      const filter: HistoryFilter = {};
+      if (flags.agent) filter.agent = flags.agent;
+      if (flags.status && ['success', 'fallback', 'error'].includes(flags.status)) {
+        filter.status = flags.status as 'success' | 'fallback' | 'error';
+      }
+      if (flags.runner && ['prompt-only', 'provider-call'].includes(flags.runner)) {
+        filter.runnerMode = flags.runner as RunnerMode;
+      }
+      if (flags.mode && ['quick', 'normal', 'deep'].includes(flags.mode)) {
+        filter.mode = flags.mode;
+      }
+      if (flags.limit) {
+        const limit = parseInt(flags.limit, 10);
+        if (!isNaN(limit) && limit > 0) filter.limit = limit;
+      }
+      if (flags.query) filter.query = flags.query;
+
+      records = historyStore.filter(filter);
+    }
+
+    if (records.length === 0) {
+      const hint = hasFilters
+        ? 'No records match the filter criteria.'
+        : 'No delegations recorded yet.';
+      ctx.ui.notify(`# Delegation History\n\n${hint}`, 'info');
+      return;
+    }
+
     ctx.ui.notify(formatHistoryTable(records), 'info');
   }
 
@@ -136,31 +175,35 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   // ── Replay handler ───────────────────────────────────────────────
 
   async function handleReplay(args: string, ctx: any) {
-    const idStr = args.trim();
-    if (!idStr) {
+    const parsed = parseReplayArgs(args);
+
+    if (parsed.error) {
+      ctx.ui.notify(`❌ ${parsed.error}`, 'error');
+      return;
+    }
+
+    if (parsed.id === null) {
       const ids = historyStore.allIds();
       const idsStr = ids.length > 0
         ? `Available IDs: ${ids.join(', ')}`
         : 'No history records available.';
-      ctx.ui.notify(`Usage: /agents replay <id>\n${idsStr}`, 'warning');
-      return;
-    }
-
-    const id = parseInt(idStr, 10);
-    if (isNaN(id)) {
-      ctx.ui.notify(`Invalid history ID "${idStr}". Must be a number.`, 'error');
+      ctx.ui.notify(
+        `Usage: /agents replay <id> [--mode <mode>] [--agent <agent>] [--task <task>] [--context <ctx>] [--files <f1,f2>]\n${idsStr}`,
+        'warning',
+      );
       return;
     }
 
     config = loadConfig(cwd);
-    const providerCtx: ProviderRunnerContext | undefined = undefined;
 
+    const hasOverrides = Object.keys(parsed.overrides).length > 0;
     const replayResult = await replayDelegation(
-      id,
+      parsed.id,
       cwd,
       config,
       providerCallStatus?.available ?? false,
-      providerCtx,
+      undefined,
+      hasOverrides ? parsed.overrides : undefined,
     );
 
     if (!replayResult.ok) {
@@ -168,21 +211,61 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       return;
     }
 
-    const lines: string[] = [`🔄 Replay of history #${id}`];
+    const lines: string[] = [`🔄 Replay of history #${parsed.id}`];
+
+    if (replayResult.originalAgent && replayResult.newAgent && replayResult.originalAgent !== replayResult.newAgent) {
+      lines.push(`   Original agent: @${replayResult.originalAgent}`);
+      lines.push(`   New agent: @${replayResult.newAgent}`);
+    }
+
+    if (replayResult.modifications && replayResult.modifications.length > 0) {
+      lines.push('', 'Modified fields:');
+      for (const mod of replayResult.modifications) {
+        lines.push(`  - ${mod}`);
+      }
+    }
+
     if (replayResult.aliasDriftWarning) {
       lines.push('', replayResult.aliasDriftWarning);
     }
+
     lines.push('', formatDelegationResult(replayResult.result!));
 
     ctx.ui.notify(lines.join('\n'), 'info');
   }
 
+  // ── Export history handler ────────────────────────────────────────
+
+  async function handleExportHistory(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
+
+    const filter: HistoryFilter = {};
+    if (flags.agent) filter.agent = flags.agent;
+    if (flags.status && ['success', 'fallback', 'error'].includes(flags.status)) {
+      filter.status = flags.status as 'success' | 'fallback' | 'error';
+    }
+    if (flags.runner && ['prompt-only', 'provider-call'].includes(flags.runner)) {
+      filter.runnerMode = flags.runner as RunnerMode;
+    }
+    if (flags.mode && ['quick', 'normal', 'deep'].includes(flags.mode)) {
+      filter.mode = flags.mode;
+    }
+    if (flags.limit) {
+      const limit = parseInt(flags.limit, 10);
+      if (!isNaN(limit) && limit > 0) filter.limit = limit;
+    }
+    if (flags.query) filter.query = flags.query;
+
+    const json = historyStore.exportJson(Object.keys(filter).length > 0 ? filter : undefined);
+    ctx.ui.notify(json, 'info');
+  }
+
   // ── /agents command with subcommand dispatch ──────────────────────
 
-  const KNOWN_SUBCOMMANDS = ['status', 'reload', 'history', 'metrics', 'replay'];
+  const KNOWN_SUBCOMMANDS = ['status', 'reload', 'history', 'metrics', 'replay', 'export-history'];
 
   pi.registerCommand('agents', {
-    description: 'List agents. Subcommands: status, reload, history, metrics, replay',
+    description: 'List agents. Subcommands: status, reload, history, metrics, replay, export-history',
     handler: async (args, ctx) => {
       const rawArgs = (args ?? '').trim();
       // Check if first word is a subcommand
@@ -198,11 +281,13 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         case 'reload':
           return handleReload(ctx);
         case 'history':
-          return handleHistory(ctx);
+          return handleHistory(rawArgs.slice('history'.length), ctx);
         case 'metrics':
           return handleMetrics(ctx);
         case 'replay':
           return handleReplay(rawArgs.slice('replay'.length), ctx);
+        case 'export-history':
+          return handleExportHistory(rawArgs.slice('export-history'.length), ctx);
         default:
           ctx.ui.notify(
             `Unknown subcommand "${firstWord}". Available: ${KNOWN_SUBCOMMANDS.join(', ')}`,
@@ -225,8 +310,8 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand('agents-history', {
-    description: 'Show recent delegation history',
-    handler: async (_args, ctx) => handleHistory(ctx),
+    description: 'Show recent delegation history (supports filters)',
+    handler: async (args, ctx) => handleHistory(args ?? '', ctx),
   });
 
   pi.registerCommand('agents-metrics', {
@@ -239,12 +324,22 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     handler: async (args, ctx) => handleReplay(args ?? '', ctx),
   });
 
+  pi.registerCommand('agents-history-export', {
+    description: 'Export delegation history as JSON',
+    handler: async (args, ctx) => handleExportHistory(args ?? '', ctx),
+  });
+
   // ── /agent shortcut command ─────────────────────────────────────
 
   pi.registerCommand('agent', {
-    description: 'Quick delegation: /agent <agent-or-alias> <task...>',
+    description: 'Quick delegation: /agent [--mode <mode>] <agent-or-alias> <task...>',
     handler: async (args, ctx) => {
-      const { agent: agentName, task } = parseAgentCommand(args ?? '');
+      const { agent: agentName, task, mode, modeError } = parseAgentCommand(args ?? '');
+
+      if (modeError) {
+        ctx.ui.notify(`❌ ${modeError}`, 'error');
+        return;
+      }
 
       if (!agentName) {
         ctx.ui.notify(buildAgentHelpText(), 'info');
@@ -284,7 +379,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
       // Run delegation
       const result = await runAndRecordDelegation(
-        { agent: agentName, task },
+        { agent: agentName, task, mode },
         cwd,
         config,
         providerCallStatus?.available ?? false,

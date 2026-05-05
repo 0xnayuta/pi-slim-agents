@@ -29,6 +29,19 @@ Users can directly invoke an agent via the `/agent` command:
 /agent fixer add a null check in parseConfig
 ```
 
+**With mode flag for different depth:**
+
+```
+/agent --mode deep oracle review the architecture
+/agent -m quick explorer find playback code
+/agent --mode normal designer review the UI flow
+```
+
+Modes:
+- `quick` — Fast, brief answers for quick lookups
+- `normal` — Balanced depth (default) for most tasks
+- `deep` — Thorough analysis for architecture, risks, complex review
+
 ### Delegation tool (agent-facing)
 
 Use the `delegate_agent` tool to hand off subtasks:
@@ -55,9 +68,28 @@ delegate_agent({
 
 - **Codebase search** → `explorer` / `search` / `find`
 - **Docs / library research** → `librarian` / `docs` / `research`
-- **Architecture review / debugging strategy** → `oracle` / `arch` / `review`
+- **Architecture review / debugging strategy** → `oracle` / `arch` / `review` (use `--mode deep`)
 - **UI/UX review** → `designer` / `ui` / `ux`
 - **Small bounded implementation** → `fixer` / `fix` / `implement`
+
+## Using History and Replay
+
+### Check previous delegations
+
+```
+/agents history
+/agents history --agent oracle
+/agents history --status error
+/agents history --query playback
+```
+
+### Replay a delegation
+
+```
+/agents replay 5                    # replay with original params
+/agents replay 5 --mode deep        # replay with deeper analysis
+/agents replay 5 --agent oracle     # replay with different agent
+```
 
 ## When NOT to Delegate
 
