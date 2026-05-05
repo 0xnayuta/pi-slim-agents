@@ -11,9 +11,8 @@ import { Type } from 'typebox';
 
 import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
-import { runDelegation, formatDelegationResult } from './runner.js';
+import { runDelegation } from './runner.js';
 import type { DelegateAgentParams, SlimAgentsConfig } from './types.js';
-import { indent } from './utils.js';
 
 // ─── Extension Factory ──────────────────────────────────────────────
 
@@ -40,29 +39,41 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   pi.registerCommand('agents', {
     description: 'List available specialist agents',
     handler: async (_args, ctx) => {
-      const agents = loadAgents(cwd, config);
+      const allAgents = loadAgents(cwd, config);
+      const enabled = allAgents.filter(a => a.enabled);
+      const disabled = allAgents.filter(a => !a.enabled);
 
-      if (agents.length === 0) {
+      if (enabled.length === 0 && disabled.length === 0) {
         ctx.ui.notify('No agents found. Add .md files to agents/ directories.', 'warning');
         return;
       }
 
       const lines: string[] = ['# Available Agents', ''];
 
-      for (const agent of agents) {
-        const tags = agent.tags.length > 0 ? ` [${agent.tags.join(', ')}]` : '';
-        const ro = agent.readonly ? ' (read-only)' : '';
-        lines.push(`## @${agent.name}${ro}${tags}`);
-        lines.push(agent.description);
-        if (agent.sourcePath) {
-          lines.push(`  _Source: ${agent.sourcePath}_`);
+      for (const agent of enabled) {
+        lines.push(`- @${agent.name} — ${agent.description} — readonly: ${agent.readonly ? 'yes' : 'no'}`);
+        if (agent.aliases.length > 0) {
+          lines.push(`  aliases: ${agent.aliases.join(', ')}`);
         }
-        lines.push('');
+      }
+
+      if (disabled.length > 0) {
+        lines.push('', '# Disabled Agents', '');
+        for (const agent of disabled) {
+          lines.push(`- @${agent.name} — ${agent.description}`);
+          lines.push(`  (enable: add { "agents": { "${agent.name}": { "enabled": true } } } to .pi/slim-agents.json)`);
+        }
       }
 
       ctx.ui.notify(lines.join('\n'), 'info');
     },
   });
+
+  // ── Lightweight routing hint injection ───────────────────────────
+
+  pi.on('before_agent_start', async event => ({
+    systemPrompt: `${event.systemPrompt}\n\nSlim agents routing hints: explorer=code location search; librarian=external docs/library research; oracle=architecture judgment/review; fixer=small bounded implementation; designer=UI/UX and interaction review. Use delegate_agent only when the specialist prompt helps.`,
+  }));
 
   // ── delegate_agent tool ───────────────────────────────────────────
 
@@ -97,9 +108,12 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         }),
       ),
       mode: Type.Optional(
-        Type.String({
-          description: 'Delegation mode: auto (default), focus (single-task), review (read-only analysis)',
-          enum: ['auto', 'focus', 'review'],
+        Type.Union([
+          Type.Literal('quick'),
+          Type.Literal('normal'),
+          Type.Literal('deep'),
+        ], {
+          description: 'Delegation mode: quick, normal (default), or deep',
         }),
       ),
     }),
@@ -122,19 +136,9 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         };
       }
 
-      // Return the delegation prompt as tool result.
-      // The main LLM reads this and executes the specialist's task.
-      const output = [
-        result.message,
-        '',
-        result.prompt,
-        '',
-        `---`,
-        `Instructions: Adopt the role described in <system-prompt> above. Complete the task in <task>. Follow all constraints. Report results clearly.`,
-      ].join('\n');
-
+      // v1 prompt-only runner: return the structured delegation prompt.
       return {
-        content: [{ type: 'text', text: output }],
+        content: [{ type: 'text', text: result.prompt }],
         details: {
           agent: result.agentName,
           delegated: true,

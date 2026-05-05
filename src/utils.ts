@@ -69,32 +69,54 @@ export function parseAgentFrontmatter(raw: string): {
   const [, yamlBlock, body] = match;
   const frontmatter: Record<string, unknown> = {};
 
-  for (const line of yamlBlock.split('\n')) {
+  const lines = yamlBlock.split('\n');
+  let currentListKey: string | undefined;
+
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
 
+    if (currentListKey && trimmed.startsWith('- ')) {
+      const list = frontmatter[currentListKey];
+      if (Array.isArray(list)) list.push(parseScalar(trimmed.slice(2).trim()));
+      continue;
+    }
+
+    currentListKey = undefined;
     const colonIdx = trimmed.indexOf(':');
     if (colonIdx === -1) continue;
 
     const key = trimmed.slice(0, colonIdx).trim();
-    let value: unknown = trimmed.slice(colonIdx + 1).trim();
+    const rawValue = trimmed.slice(colonIdx + 1).trim();
 
-    // Simple type coercion
-    if (value === 'true') value = true;
-    else if (value === 'false') value = false;
-    else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value)) {
-      value = Number(value);
+    if (rawValue === '') {
+      frontmatter[key] = [];
+      currentListKey = key;
+      continue;
     }
 
-    // Handle simple YAML arrays: [a, b, c] or - a\n- b
-    if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
-      value = value.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
-    }
-
-    frontmatter[key] = value;
+    frontmatter[key] = parseScalar(rawValue);
   }
 
   return { frontmatter, body: body.trim() };
+}
+
+function parseScalar(raw: string): unknown {
+  const value = raw.replace(/^["']|["']$/g, '');
+
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+
+  if (value.startsWith('[') && value.endsWith(']')) {
+    return value
+      .slice(1, -1)
+      .split(',')
+      .map(s => s.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+
+  return value;
 }
 
 // ─── Text Helpers ───────────────────────────────────────────────────

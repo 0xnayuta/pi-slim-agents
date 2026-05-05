@@ -1,160 +1,282 @@
 # pi-slim-agents
 
-Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent) — lean expert roles without heavy orchestration.
+Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent). This package adds a small set of expert role prompts and a `delegate_agent` tool for prompt-only delegation.
 
-**Inspired by** [oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim)'s multi-agent patterns, but this project does not copy the full framework. It ports only the lightweight specialist role concept as a pi-mono extension.
+## Current status
 
-## What is this?
+**v0.2.0 is prompt-only delegation.** `delegate_agent` does **not**:
 
-pi-slim-agents is a [pi-mono extension package](https://github.com/mariozechner/pi-coding-agent/blob/main/docs/packages.md) that adds specialist agent roles to your pi session:
+- Spawn a real subagent or child pi process
+- Start a background subprocess or scheduler
+- Call an external model API or provider
+- Create worktrees or isolate environments
+- Run council/voting flows
+- Support parallel agent execution
 
-| Agent | Role | Best For |
-|-------|------|----------|
-| **@orchestrator** | Task coordinator | Decomposing complex work, routing to specialists |
-| **@explorer** | Codebase navigator | Finding files, locating code patterns, "where is X?" |
-| **@librarian** | Doc researcher | Library docs, API references, best practices |
-| **@oracle** | Strategic advisor | Architecture review, complex debugging, code review |
-| **@designer** | UI/UX specialist | Styling, responsive design, component architecture, visual polish |
-| **@fixer** | Implementation | Bounded code changes, test writing, bug fixes |
+It reads the selected agent markdown prompt and returns a structured delegation prompt for the main agent to use.
 
-## Installation
+## Built-in agents
+
+| Agent | Role | Best For | Read-only |
+|-------|------|----------|-----------|
+| `orchestrator` | Task coordinator | Decomposition and routing guidance | no |
+| `explorer` | Codebase navigator | Finding files, locating code patterns, "where is X?" | yes |
+| `librarian` | Documentation researcher | Library docs, API references, best practices | yes |
+| `oracle` | Strategic advisor | Architecture review, debugging strategy, code review | yes |
+| `designer` | UI/UX specialist | UI/UX, styling, responsive design, interaction review | no |
+| `fixer` | Implementation specialist | Small bounded code changes, tests, bug fixes | no |
+
+## Installation for local development
 
 ```bash
-# Install from npm (when published)
-pi install npm:@0xnayuta/pi-slim-agents
-
-# Install from local path (for development)
+pnpm install
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm pack --dry-run
 pi install /path/to/pi-slim-agents
-
-# Install from git
-pi install git:github.com/your-user/pi-slim-agents
 ```
+
+The package manifest points pi at `./dist/index.js`, so run `pnpm build` before installing from a local path.
 
 ## Usage
 
 ### List available agents
 
-```
+```text
 /agents
 ```
 
-### Delegate to an agent
+Expected shape:
 
-The LLM can call the `delegate_agent` tool:
+```text
+# Available Agents
 
-```
-delegate_agent({
-  agent: "explorer",
-  task: "Find all files that import the auth module",
-  files: ["src/auth/"]
-})
-```
-
-```
-delegate_agent({
-  agent: "oracle",
-  task: "Review error handling in the API layer",
-  context: "We've been seeing intermittent 500 errors",
-  files: ["src/api/handler.ts"],
-  mode: "review"
-})
+- @orchestrator — AI task orchestrator that decomposes work and delegates to specialist agents — readonly: no
+  aliases: route, router
+- @explorer — Fast codebase search and pattern matching specialist — readonly: yes
+  aliases: search, find, locate
+- @librarian — Documentation and library research specialist — readonly: yes
+  aliases: docs, research, library
+- @oracle — Strategic technical advisor, code reviewer, and architecture consultant — readonly: yes
+  aliases: arch, review, judge
+- @designer — Frontend UI/UX specialist for intentional, polished visual experiences — readonly: no
+  aliases: ui, ux, design
+- @fixer — Fast, focused implementation specialist for bounded code changes — readonly: no
+  aliases: fix, implement, patch
 ```
 
-## Custom Agents
+### Delegate to explorer (or use alias)
 
-### Project-level (team-shared)
-
-Create `.pi/slim-agents/agents/my-agent.md`:
-
-```markdown
----
-description: Custom project-specific agent
-role: specialist
-temperature: 0.2
-tags:
-  - custom
----
-
-You are My Agent — a specialist in [domain].
-
-**Role**: [What you do]
-
-**Behavior**:
-- [How to act]
-- [What tools to use]
-
-**Constraints**:
-- [What not to do]
+```json
+{
+  "agent": "explorer",
+  "task": "Find where package resources are loaded",
+  "files": ["src/"],
+  "mode": "normal"
+}
 ```
 
-### User-level (personal)
+Or use an alias:
 
-Create `~/.pi/agent/slim-agents/agents/my-agent.md` with the same format.
+```json
+{
+  "agent": "search",
+  "task": "Find where package resources are loaded",
+  "files": ["src/"]
+}
+```
 
-### Priority
+### Delegate to oracle
 
-Agent loading priority (highest wins for same name):
-1. Project-level `.pi/slim-agents/agents/*.md`
-2. User-level `~/.pi/agent/slim-agents/agents/*.md`
-3. Package built-in `agents/*.md`
+```json
+{
+  "agent": "oracle",
+  "task": "Review whether prompt-only delegation is the right v1 architecture",
+  "context": "Do not spawn child processes in this milestone.",
+  "files": ["src/index.ts", "src/runner.ts"],
+  "mode": "deep"
+}
+```
+
+### Delegate to designer (via alias)
+
+```json
+{
+  "agent": "ui",
+  "task": "Review the command output format for readability in a terminal UI",
+  "context": "The output is shown through ctx.ui.notify.",
+  "mode": "quick"
+}
+```
+
+`delegate_agent` parameters:
+
+- `agent: string`
+- `task: string`
+- `context?: string`
+- `files?: string[]`
+- `mode?: "quick" | "normal" | "deep"`
+
+The tool returns a fixed prompt-only format:
+
+```text
+Agent
+Role
+Task
+Context
+Files
+Mode
+Instructions
+Expected Output
+```
+
+If the agent name is invalid or not found, the tool returns a clear error and lists available agents.
+
+## Agent Aliases
+
+Agents can be referenced by alias names in `delegate_agent`:
+
+| Alias | Resolves To |
+|-------|-------------|
+| `search`, `find`, `locate` | `explorer` |
+| `docs`, `research`, `library` | `librarian` |
+| `arch`, `review`, `judge` | `oracle` |
+| `fix`, `implement`, `patch` | `fixer` |
+| `ui`, `ux`, `design` | `designer` |
+| `route`, `router` | `orchestrator` |
+
+Aliases are defined in agent markdown frontmatter. Custom agents can also define aliases.
+
+Alias rules:
+- Only lowercase letters, numbers, hyphens, underscores
+- Cannot conflict with another agent's name or alias
+- Conflicting aliases are skipped with a warning at load time
 
 ## Configuration
 
-Configuration files (project overrides user):
+Disable agents via a config file.
 
-- `~/.pi/agent/slim-agents.json` — User defaults
-- `.pi/slim-agents.json` — Project overrides
+Project-level: `.pi/slim-agents.json`
+
+User-level: `~/.pi/agent/slim-agents.json`
+
+Priority: **project-level > user-level > defaults**.
+
+Example `.pi/slim-agents.json`:
 
 ```json
 {
   "agents": {
-    "oracle": {
-      "temperature": 0.3,
-      "appendPrompt": "Focus on security concerns."
-    },
-    "fixer": {
-      "disabled": true
+    "designer": {
+      "enabled": false
     }
-  },
-  "disabled": ["council"],
-  "extraAgentDirs": ["./custom-agents"]
+  }
 }
 ```
 
-See [docs/agent-authoring.md](docs/agent-authoring.md) for the full agent authoring guide.
+Disabled agents:
+- Are not shown in `/agents` main list (shown separately as "Disabled Agents")
+- Cannot be called via `delegate_agent`
+- Aliases pointing to disabled agents are also rejected
+- Error messages explain how to re-enable
 
-## Design
+You can also use the legacy `disabled: true` format:
 
-See [docs/design.md](docs/design.md) for architecture details.
+```json
+{
+  "agents": {
+    "designer": {
+      "disabled": true
+    }
+  }
+}
+```
 
-Key design decisions:
-- **Markdown-first**: Agents are `.md` files with YAML frontmatter
-- **Prompt-based delegation** (v1): Delegation returns a structured prompt for the main LLM
-- **Zero runtime overhead**: No background processes, no scheduling
-- **Extensible**: Custom agents at project or user level
+Or the top-level `disabled` array:
 
-## Roadmap
+```json
+{
+  "disabled": ["designer"]
+}
+```
 
-See [docs/roadmap.md](docs/roadmap.md) for the full roadmap.
+If both `enabled` and `disabled` are set, `enabled` takes precedence.
 
-- **v0.1.0** (current): Project skeleton, built-in agents, prompt-based delegation
-- **v0.2.0**: Enhanced delegation, metrics, aliases
-- **v0.3.0**: Child session delegation (when pi-mono API supports it)
-- **v0.4.0**: Agent templates, composition, testing utilities
+## Custom agents
+
+Project-level agents:
+
+```text
+.pi/pi-slim-agents/agents/my-agent.md
+```
+
+User-level agents:
+
+```text
+~/.pi/agent/pi-slim-agents/agents/my-agent.md
+```
+
+Agent names must use only lowercase letters, numbers, hyphens, and underscores.
+
+Example:
+
+```markdown
+---
+name: my-agent
+description: Custom project-specific agent
+role: specialist
+temperature: 0.2
+readonly: true
+tags:
+  - custom
+aliases:
+  - mine
+  - custom
+---
+
+You are My Agent — a specialist in a narrow domain.
+```
+
+Loading priority for the same name:
+
+1. Project-level `.pi/pi-slim-agents/agents/*.md`
+2. User-level `~/.pi/agent/pi-slim-agents/agents/*.md`
+3. Package built-in `agents/*.md`
+
+## Current limitations
+
+This version intentionally does **not** support:
+
+- Spawning pi subprocesses or child processes
+- True background agents or parallel execution
+- Worktree isolation or environment sandboxing
+- Scheduler or cron-style orchestration
+- Council / voting flows
+- Session resume for delegated agents
+- MCP integration
+- Automatic code modification by delegated agents
+- Provider-call runner (model API calls)
 
 ## Development
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Type-check
-pnpm exec tsc --noEmit
-
-# Test locally with pi
-pi install /path/to/pi-slim-agents
+pnpm typecheck
+pnpm build
+pnpm test
+pnpm pack --dry-run
 ```
+
+The test suite uses `tsx` (no test framework). It covers:
+- All 6 built-in agents load correctly
+- Frontmatter parsing (name, description, readonly, temperature, aliases, enabled)
+- Invalid agent name rejection (spaces, slashes, path traversal, uppercase)
+- Unknown agent error messages with available agents list
+- Alias resolution for all default aliases
+- Disabled agent rejection via `enabled: false`, `disabled: true`, and top-level `disabled` array
+- Alias pointing to disabled agent is rejected
 
 ## License
 
-MIT — See [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE).

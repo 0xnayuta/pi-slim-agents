@@ -11,6 +11,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   AgentDefinition,
   AgentFileEntry,
@@ -37,7 +38,8 @@ import { getAgentOverride, isAgentDisabled } from './config.js';
 export function loadAgents(cwd: string, config: SlimAgentsConfig): AgentDefinition[] {
   const entries = discoverAgentFiles(cwd, config);
   const resolved = resolveAgents(entries, config);
-  return resolved.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+  const sanitized = validateAndSanitizeAliases(resolved);
+  return sanitized.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 }
 
 /**
@@ -49,7 +51,9 @@ export function getAgent(
   config: SlimAgentsConfig,
 ): AgentDefinition | undefined {
   const agents = loadAgents(cwd, config);
-  return agents.find(a => a.name === name);
+  const resolved = resolveAgentName(name, agents);
+  if (!resolved) return undefined;
+  return agents.find(a => a.name === resolved);
 }
 
 /**
@@ -121,26 +125,35 @@ function resolveAgents(
   const agents: AgentDefinition[] = [];
 
   for (const entry of entries) {
-    if (isAgentDisabled(config, entry.name)) continue;
-
     try {
       const raw = fs.readFileSync(entry.filePath, 'utf-8');
       const { frontmatter, body } = parseAgentFrontmatter(raw);
-      const fm = frontmatter as Record<string, unknown>;
+      const fm = frontmatter as AgentFrontmatter;
+      const agentName = typeof fm.name === 'string' ? fm.name : entry.name;
 
-      const override = getAgentOverride(config, entry.name);
+      if (!isSafeAgentName(agentName)) continue;
 
-      // Build agent definition
+      const override = getAgentOverride(config, agentName);
+      const tags = Array.isArray(fm.tags)
+        ? fm.tags.filter((tag): tag is string => typeof tag === 'string')
+        : [];
+      const aliases = Array.isArray(fm.aliases)
+        ? fm.aliases.filter((a): a is string => typeof a === 'string')
+        : [];
+
+      // Build agent definition from frontmatter + markdown body.
       const agent: AgentDefinition = {
-        name: entry.name,
+        name: agentName,
         description:
           override?.description ??
-          (typeof fm.description === 'string' ? fm.description : `Specialist agent: ${entry.name}`),
-        prompt: buildPrompt(body, override?.prompt, override?.appendPrompt),
+          (typeof fm.description === 'string' ? fm.description : `Specialist agent: ${agentName}`),
+        body: buildPrompt(body, override?.prompt, override?.appendPrompt),
         temperature: override?.temperature ?? (typeof fm.temperature === 'number' ? fm.temperature : 0.2),
-        role: typeof fm.role === 'string' ? fm.role : entry.name,
+        role: typeof fm.role === 'string' ? fm.role : agentName,
         readonly: fm.readonly === true,
-        tags: override?.tags ?? (Array.isArray(fm.tags) ? fm.tags as string[] : []),
+        tags: override?.tags ?? tags,
+        aliases,
+        enabled: !isAgentDisabled(config, agentName),
         order: typeof fm.order === 'number' ? fm.order : 100,
         sourcePath: entry.filePath,
       };
@@ -149,6 +162,57 @@ function resolveAgents(
     } catch {
       // Skip unreadable files
     }
+  }
+
+  return agents;
+}
+
+// ─── Alias Resolution ────────────────────────────────────────────
+
+/**
+ * Resolve a name or alias to the actual agent name.
+ * Returns null if no match found.
+ */
+export function resolveAgentName(input: string, agents: AgentDefinition[]): string | null {
+  // Direct name match
+  const direct = agents.find(a => a.name === input);
+  if (direct) return direct.name;
+  // Alias match
+  for (const agent of agents) {
+    if (agent.aliases.includes(input)) return agent.name;
+  }
+  return null;
+}
+
+/**
+ * Validate aliases for conflicts and sanitize agent alias arrays in-place.
+ * Logs warnings for skipped aliases.
+ */
+function validateAndSanitizeAliases(agents: AgentDefinition[]): AgentDefinition[] {
+  const allNames = new Set(agents.map(a => a.name));
+  const seenAliases = new Map<string, string>();
+
+  for (const agent of agents) {
+    const validAliases: string[] = [];
+    for (const alias of agent.aliases) {
+      if (!isSafeAgentName(alias)) {
+        console.warn(`[slim-agents] Skipping invalid alias "${alias}" for agent "${agent.name}"`);
+        continue;
+      }
+      if (allNames.has(alias)) {
+        console.warn(`[slim-agents] Alias "${alias}" of agent "${agent.name}" conflicts with agent name. Skipping.`);
+        continue;
+      }
+      if (seenAliases.has(alias)) {
+        const existing = seenAliases.get(alias)!;
+        if (existing === agent.name) continue; // duplicate alias in same agent
+        console.warn(`[slim-agents] Alias "${alias}" of agent "${agent.name}" conflicts with agent "${existing}". Skipping.`);
+        continue;
+      }
+      seenAliases.set(alias, agent.name);
+      validAliases.push(alias);
+    }
+    agent.aliases = validAliases;
   }
 
   return agents;
@@ -169,6 +233,6 @@ function buildPrompt(
 function getPackageAgentsDir(): string {
   // When running as an installed package, agents/ is relative to package root.
   // import.meta.url points to the compiled .js file in src/.
-  const srcDir = path.dirname(new URL(import.meta.url).pathname);
+  const srcDir = path.dirname(fileURLToPath(import.meta.url));
   return path.join(srcDir, '..', AGENTS_DIR_NAME);
 }

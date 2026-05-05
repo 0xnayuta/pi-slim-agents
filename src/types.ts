@@ -8,7 +8,7 @@
 
 /** Parsed frontmatter from an agent .md file. */
 export interface AgentFrontmatter {
-  name: string;
+  name?: string;
   description?: string;
   role?: string;
   temperature?: number;
@@ -16,6 +16,8 @@ export interface AgentFrontmatter {
   readonly?: boolean;
   /** Tags for filtering / categorization. */
   tags?: string[];
+  /** Aliases for this agent (e.g. search -> explorer). */
+  aliases?: string[];
   /** Display order (lower = higher priority). */
   order?: number;
 }
@@ -27,7 +29,7 @@ export interface AgentDefinition {
   /** Human-readable description. */
   description: string;
   /** The system prompt body (markdown after frontmatter). */
-  prompt: string;
+  body: string;
   /** Temperature override. */
   temperature: number;
   /** Role hint. */
@@ -36,6 +38,10 @@ export interface AgentDefinition {
   readonly: boolean;
   /** Tags. */
   tags: string[];
+  /** Aliases for this agent. */
+  aliases: string[];
+  /** Whether agent is enabled. */
+  enabled: boolean;
   /** Display order. */
   order: number;
   /** Source path (for diagnostics). */
@@ -66,6 +72,8 @@ export interface AgentOverride {
   appendPrompt?: string;
   /** Disable this agent. */
   disabled?: boolean;
+  /** Enable this agent (takes precedence over disabled). */
+  enabled?: boolean;
   /** Tags override. */
   tags?: string[];
 }
@@ -83,7 +91,7 @@ export interface DelegateAgentParams {
   /** Relevant file paths. */
   files?: string[];
   /** Delegation mode. */
-  mode?: 'auto' | 'focus' | 'review';
+  mode?: 'quick' | 'normal' | 'deep';
 }
 
 /** Result returned by the runner. */

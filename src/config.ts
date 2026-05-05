@@ -36,7 +36,10 @@ export function getAgentOverride(config: SlimAgentsConfig, agentName: string): A
 export function isAgentDisabled(config: SlimAgentsConfig, agentName: string): boolean {
   if (config.disabled?.includes(agentName)) return true;
   const override = getAgentOverride(config, agentName);
-  return override?.disabled === true;
+  if (!override) return false;
+  // Explicit enabled field takes precedence over disabled field
+  if (override.enabled !== undefined) return !override.enabled;
+  return override.disabled === true;
 }
 
 // ─── Internal ───────────────────────────────────────────────────────

@@ -10,6 +10,10 @@ tags:
   - review
   - debugging
   - strategy
+aliases:
+  - arch
+  - review
+  - judge
 ---
 
 You are Oracle — a strategic technical advisor and code reviewer.

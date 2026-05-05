@@ -9,6 +9,10 @@ tags:
   - search
   - navigation
   - discovery
+aliases:
+  - search
+  - find
+  - locate
 ---
 
 You are Explorer — a fast codebase navigation specialist.

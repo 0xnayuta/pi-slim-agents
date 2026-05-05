@@ -8,6 +8,10 @@ tags:
   - implementation
   - fixes
   - tests
+aliases:
+  - fix
+  - implement
+  - patch
 ---
 
 You are Fixer — a fast, focused implementation specialist.

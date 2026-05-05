@@ -16,8 +16,8 @@ import type {
   DelegateAgentParams,
   SlimAgentsConfig,
 } from './types.js';
-import { getAgent, loadAgents } from './agents.js';
-import { truncate } from './utils.js';
+import { loadAgents, resolveAgentName } from './agents.js';
+import { isSafeAgentName } from './utils.js';
 
 // ─── Public API ─────────────────────────────────────────────────────
 
@@ -32,10 +32,25 @@ export function runDelegation(
   cwd: string,
   config: SlimAgentsConfig,
 ): DelegationResult {
-  // Resolve agent
-  const agent = getAgent(params.agent, cwd, config);
-  if (!agent) {
-    const available = loadAgents(cwd, config).map(a => a.name).join(', ');
+  // Validate input format
+  if (!isSafeAgentName(params.agent)) {
+    const enabled = loadAgents(cwd, config).filter(a => a.enabled);
+    const available = enabled.map(a => a.name).join(', ');
+    return {
+      ok: false,
+      prompt: '',
+      agentName: params.agent,
+      error: `Invalid agent name "${params.agent}". Allowed characters: lowercase letters, numbers, hyphen, underscore. Available: ${available}`,
+    };
+  }
+
+  // Resolve alias to actual agent name
+  const agents = loadAgents(cwd, config);
+  const resolvedName = resolveAgentName(params.agent, agents);
+
+  if (!resolvedName) {
+    const enabled = agents.filter(a => a.enabled);
+    const available = enabled.map(a => a.name).join(', ');
     return {
       ok: false,
       prompt: '',
@@ -44,12 +59,24 @@ export function runDelegation(
     };
   }
 
-  // Build delegation prompt
-  const prompt = buildDelegationPrompt(agent, params);
+  const agent = agents.find(a => a.name === resolvedName)!;
+
+  // Check if agent is enabled
+  if (!agent.enabled) {
+    const enabled = agents.filter(a => a.enabled);
+    const available = enabled.map(a => a.name).join(', ');
+    const viaAlias = params.agent !== resolvedName ? ` (via alias "${params.agent}")` : '';
+    return {
+      ok: false,
+      prompt: '',
+      agentName: resolvedName,
+      error: `Agent "${resolvedName}"${viaAlias} is disabled. To enable, add { "agents": { "${resolvedName}": { "enabled": true } } } to .pi/slim-agents.json. Available enabled agents: ${available}`,
+    };
+  }
 
   return {
     ok: true,
-    prompt,
+    prompt: buildDelegationPrompt(agent, params),
     agentName: agent.name,
     message: `Delegating to @${agent.name} (${agent.role}). ${agent.readonly ? 'This agent is read-only.' : ''}`,
   };
@@ -68,7 +95,7 @@ export function formatDelegationResult(result: DelegationResult): string {
     result.message ?? '',
     '',
     '--- Delegation Prompt ---',
-    truncate(result.prompt, 2000),
+    result.prompt,
     '--- End ---',
   ];
 
@@ -81,55 +108,35 @@ function buildDelegationPrompt(
   agent: AgentDefinition,
   params: DelegateAgentParams,
 ): string {
-  const sections: string[] = [];
-
-  // Agent identity
-  sections.push(`<delegation>`);
-  sections.push(`<agent name="${agent.name}" role="${agent.role}" />`);
-  sections.push('');
-
-  // System prompt
-  sections.push(`<system-prompt>`);
-  sections.push(agent.prompt);
-  sections.push('</system-prompt>');
-  sections.push('');
-
-  // Task
-  sections.push(`<task>`);
-  sections.push(params.task);
-  sections.push('</task>');
-
-  // Context
-  if (params.context) {
-    sections.push('');
-    sections.push('<context>');
-    sections.push(params.context);
-    sections.push('</context>');
-  }
-
-  // Files
-  if (params.files && params.files.length > 0) {
-    sections.push('');
-    sections.push('<relevant-files>');
-    for (const f of params.files) {
-      sections.push(`- ${f}`);
-    }
-    sections.push('</relevant-files>');
-  }
-
-  // Mode
-  if (params.mode && params.mode !== 'auto') {
-    sections.push('');
-    sections.push(`<mode>${params.mode}</mode>`);
-  }
-
-  // Readonly instruction
-  if (agent.readonly) {
-    sections.push('');
-    sections.push('<constraint>READ-ONLY: Do not modify files. Only search, analyze, and advise.</constraint>');
-  }
-
-  sections.push('</delegation>');
+  const files = params.files ?? [];
+  const mode = params.mode ?? 'normal';
+  const sections = [
+    'Agent',
+    `@${agent.name}`,
+    '',
+    'Role',
+    agent.role,
+    '',
+    'Task',
+    params.task,
+    '',
+    'Context',
+    params.context?.trim() || '(none)',
+    '',
+    'Files',
+    files.length > 0 ? files.map(file => `- ${file}`).join('\n') : '(none)',
+    '',
+    'Mode',
+    mode,
+    '',
+    'Instructions',
+    agent.body,
+    '',
+    'Expected Output',
+    agent.readonly
+      ? 'Search, analyze, and report clearly. Do not modify files.'
+      : 'Complete the task and report concise, actionable results.',
+  ];
 
   return sections.join('\n');
 }

@@ -35,13 +35,13 @@ delegate_agent({
   task: "Review the error handling in src/api/ and suggest improvements",
   context: "We've been seeing intermittent 500 errors in production",
   files: ["src/api/handler.ts", "src/api/middleware.ts"],
-  mode: "review"
+  mode: "deep"
 })
 ```
 
 ## When to Delegate
 
-- **Parallel work**: Multiple independent searches or implementations
+- **Focused work**: Narrow searches, reviews, research, or bounded implementations
 - **Specialist expertise**: Architecture decisions → oracle, docs → librarian
 - **Context isolation**: Keep main context clean by delegating focused tasks
 - **Bounded implementation**: Well-defined code changes → fixer
