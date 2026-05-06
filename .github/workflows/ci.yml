@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  # Use Node.js 24 for GitHub Actions runtime (deprecation of Node 20)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: Test Suite
@@ -15,19 +19,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          run_install: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: |
+          STORE_PATH="$(pnpm store path --silent)"
+          mkdir -p "$STORE_PATH"
+          echo "STORE_PATH=$STORE_PATH" >> "$GITHUB_OUTPUT"
+          echo "Store path: $STORE_PATH"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Enable corepack
-        run: corepack enable
+          path: ${{ steps.pnpm-store.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile

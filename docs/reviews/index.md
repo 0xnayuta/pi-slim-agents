@@ -33,6 +33,12 @@ Summary of all review rounds and fix reports for pi-slim-agents.
 | [D1-runtime-fix-esm-require.md](D1-runtime-fix-esm-require.md) | 2026-05-06 | ESM require is not defined | ✅ |
 | [D1-fix-prompt-only-dogfood-ux.md](D1-fix-prompt-only-dogfood-ux.md) | 2026-05-06 | Prompt-only UX clarification | ✅ |
 
+## CI Fixes
+
+| Fix Report | Date | Topic | Status |
+|------------|------|-------|--------|
+| [CI-fix-node24-pnpm-cache.md](CI-fix-node24-pnpm-cache.md) | 2026-05-06 | Node.js 24 + manual pnpm store cache | ✅ |
+
 ## Deferred Items (R5)
 
 These items were identified in R5 but deferred for post-0.1.0:
@@ -128,4 +134,4 @@ These items were identified in R5 but deferred for post-0.1.0:
 
 ---
 
-*Last updated: 2026-05-06*
+*Last updated: 2026-05-06 (CI fix)*

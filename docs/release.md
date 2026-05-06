@@ -303,13 +303,21 @@ CI runs on:
 - Every push to main/master
 - Every pull request to main/master
 
+CI configuration:
+- **Node.js**: 24 (GitHub Actions runtime)
+- **pnpm caching**: Manual pnpm store caching via `actions/cache@v4`
+- **Lockfile**: `--no-frozen-lockfile` for CI (allows lockfile updates in PRs)
+
 CI steps:
-1. Setup pnpm
-2. Install dependencies
-3. TypeScript type check
-4. Build
-5. Run tests (agents + prompts)
-6. Check package contents
-7. Dry-run pack
+1. Setup Node.js 24
+2. Enable corepack
+3. Setup pnpm (no auto-install)
+4. Get and cache pnpm store path
+5. Install dependencies
+6. TypeScript type check
+7. Build
+8. Run tests (agents + prompts)
+9. Check package contents
+10. Dry-run pack (`pnpm pack --dry-run`)
 
 CI does NOT publish to npm automatically. Manual publish is required.
