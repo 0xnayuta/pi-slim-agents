@@ -2,14 +2,17 @@
  * Utility functions for pi-slim-agents.
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 // ─── Constants ──────────────────────────────────────────────────────
 
 export const PACKAGE_NAME = 'pi-slim-agents';
 export const CONFIG_FILENAME = 'slim-agents.json';
 export const AGENTS_DIR_NAME = 'agents';
+export const TEMPLATES_DIR_NAME = 'templates';
 
 /** Project-level config directory. */
 export const PROJECT_CONFIG_DIR = '.pi';
@@ -20,6 +23,63 @@ export const PROJECT_AGENTS_DIR = path.join(PROJECT_CONFIG_DIR, PACKAGE_NAME, AG
 export const USER_CONFIG_DIR = path.join(os.homedir(), '.pi', 'agent');
 /** User-level agents directory. */
 export const USER_AGENTS_DIR = path.join(os.homedir(), '.pi', 'agent', PACKAGE_NAME, AGENTS_DIR_NAME);
+
+// ─── Package Root Detection ─────────────────────────────────────
+
+/**
+ * Find the package root directory by looking for package.json.
+ * Works from various import contexts (src/, dist/, etc.)
+ */
+export function findPackageRoot(fromPath?: string): string | null {
+  // Start from the module location or provided path
+  let dir = fromPath
+    ? path.dirname(fromPath)
+    : path.dirname(fileURLToPath(import.meta.url));
+
+  // Navigate up looking for package.json
+  let maxLevels = 10; // Safety limit
+  while (maxLevels > 0) {
+    const pkgPath = path.join(dir, 'package.json');
+    try {
+      if (fs.existsSync(pkgPath)) {
+        return dir;
+      }
+    } catch {
+      // ignore
+    }
+
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // Reached filesystem root
+    dir = parent;
+    maxLevels--;
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a package asset path (e.g., 'agents/explorer.md') relative to package root.
+ * Returns the absolute path or null if package root cannot be found.
+ */
+export function resolvePackageAssetPath(assetPath: string): string | null {
+  const root = findPackageRoot();
+  if (!root) return null;
+  return path.join(root, assetPath);
+}
+
+/**
+ * Get the package agents directory path.
+ */
+export function getPackageAgentsDir(): string | null {
+  return resolvePackageAssetPath(AGENTS_DIR_NAME);
+}
+
+/**
+ * Get the package templates directory path.
+ */
+export function getPackageTemplatesDir(): string | null {
+  return resolvePackageAssetPath(TEMPLATES_DIR_NAME);
+}
 
 // ─── Path Helpers ───────────────────────────────────────────────────
 

@@ -316,7 +316,7 @@ File-level metadata is collected at load time via `fs.statSync`:
 ```typescript
 interface FileMetadata {
   sourcePath: string;    // Safe display path (relative or abbreviated, never absolute user paths)
-  sourcePathKind: 'builtin' | 'project' | 'user' | 'external';
+  sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
   createdAt: string | null;  // ISO 8601 (may be null on Windows/older FS)
   lastModified: string | null;  // ISO 8601
   sizeBytes: number | null;  // bytes
@@ -328,6 +328,7 @@ interface FileMetadata {
 - `project`: Relative to project cwd (e.g., `.pi/slim-agents/agents/foo.md`)
 - `user`: Home directory abbreviated (e.g., `~/.pi/agent/...`)
 - `external`: Just the filename (e.g., `foo.md`)
+- `unknown`: Cannot determine path origin (fallback)
 
 **Non-fatal design**: Stat failures log a warning and return null metadata fields. The extension never crashes due to metadata collection — agents/templates are still loaded.
 

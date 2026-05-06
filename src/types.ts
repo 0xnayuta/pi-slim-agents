@@ -9,10 +9,14 @@
 /**
  * File-level metadata for an agent or template file.
  * Collected via fs.stat at load time. Fields may be null if stat fails.
+ * 
+ * Privacy-first: sourcePath is always a safe display path, never an absolute user path.
  */
 export interface FileMetadata {
-  /** Absolute or relative path to the source file. */
+  /** Safe display path (relative or abbreviated, never absolute user paths). */
   sourcePath: string;
+  /** Source kind for API consumers to understand the path origin. */
+  sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
   /** File creation time (ISO 8601). May be null on some platforms/filesystems. */
   createdAt: string | null;
   /** Last modification time (ISO 8601). */

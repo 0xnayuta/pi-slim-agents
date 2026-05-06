@@ -62,12 +62,12 @@ You are My Agent — a specialist in [domain].
 | `name` | string | No* | Agent identifier. Defaults to filename. |
 | `description` | string | Yes | Short description shown in `/agents` list. |
 | `role` | string | No | Role hint for the orchestrator. |
-| `temperature` | number | No | LLM temperature (0.0-1.0). Default: 0.2 |
+| `temperature` | number | No | LLM temperature (0-2). Default: 0.2. Valid range: 0.0 to 2.0. |
 | `readonly` | boolean | No | If true, agent cannot modify files. Default: false |
 | `tags` | string[] | No | Tags for search and filtering. See [Tags](#tags-design) below. |
 | `order` | number | No | Display order (lower = higher priority). Default: 100 |
 | `aliases` | string[] | No | Alternative names for this agent. |
-| `recommendedMode` | string | No | Recommended mode: quick, normal, or deep. |
+| `recommendedMode` | string | No | Recommended delegation mode: `quick`, `normal`, or `deep`. Default: `normal` |
 
 *The filename takes precedence over the `name` field.
 
@@ -492,3 +492,15 @@ This lets the agent combine static analysis (your review) with real-time compile
 | cpp-reviewer | yes | C/C++ memory safety, CMake |
 
 See `/agents templates` for the full list with descriptions.
+
+### Template Name Convention
+
+Template file names may end with `-template` (e.g., `security-reviewer.md` or `security-reviewer-template.md`). 
+The `-template` suffix is automatically stripped from the template name for display purposes.
+
+For example:
+- A file named `security-reviewer.md` becomes template `security-reviewer`
+- A file named `cpp-reviewer-template.md` also becomes template `cpp-reviewer`
+
+The frontmatter `name` field in the template file is used as-is (without stripping), but if the filename 
+has a `-template` suffix, it is also stripped from the frontmatter name to match the expected convention.

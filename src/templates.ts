@@ -14,9 +14,10 @@ import { fileURLToPath } from 'node:url';
 
 import type { AgentDefinition, AgentFrontmatter, FileMetadata, SlimAgentsConfig } from './types.js';
 import {
-  parseAgentFrontmatter,
+  getPackageTemplatesDir,
   isSafeAgentName,
   nameFromFilename,
+  parseAgentFrontmatter,
   PROJECT_AGENTS_DIR,
 } from './utils.js';
 import { loadConfig } from './config.js';
@@ -83,6 +84,14 @@ export interface ValidationResult {
  */
 export function loadTemplates(): TemplateLoadResult {
   const templatesDir = getTemplatesDir();
+
+  if (!templatesDir) {
+    return {
+      ok: false,
+      templates: [],
+      error: 'Cannot locate package templates directory',
+    };
+  }
 
   if (!fs.existsSync(templatesDir)) {
     return {
@@ -440,6 +449,27 @@ export function validateAgents(cwd: string): ValidationResult {
       }
       seenTags.add(tag);
     }
+
+    // Validate temperature range for builtin agents
+    if (agent.temperature !== undefined && (agent.temperature < 0 || agent.temperature > 2)) {
+      issues.push({
+        type: 'warning',
+        file: agent.sourcePath ?? 'builtin',
+        message: `Agent "${agent.name}" has temperature ${agent.temperature} outside valid range (0-2)`,
+        field: 'temperature',
+      });
+    }
+
+    // Validate recommendedMode for builtin agents
+    const validModes = ['quick', 'normal', 'deep'];
+    if (agent.recommendedMode && !validModes.includes(agent.recommendedMode)) {
+      issues.push({
+        type: 'warning',
+        file: agent.sourcePath ?? 'builtin',
+        message: `Agent "${agent.name}" has invalid recommendedMode "${agent.recommendedMode}" — valid values: ${validModes.join(', ')}`,
+        field: 'recommendedMode',
+      });
+    }
   }
 
   // 2. Validate templates
@@ -493,6 +523,17 @@ export function validateAgents(cwd: string): ValidationResult {
         });
       }
 
+      // Validate recommendedMode for templates
+      const validModes = ['quick', 'normal', 'deep'];
+      if (!validModes.includes(tmpl.recommendedMode)) {
+        issues.push({
+          type: 'warning',
+          file: tmpl.filePath,
+          message: `Template "${tmpl.name}" has invalid recommendedMode "${tmpl.recommendedMode}" — valid values: ${validModes.join(', ')}`,
+          field: 'recommendedMode',
+        });
+      }
+
       for (const tag of tags) {
         if (!isValidTag(tag)) {
           tagsCounters.invalidTagsCount++;
@@ -516,6 +557,16 @@ export function validateAgents(cwd: string): ValidationResult {
           });
         }
         seenTags.add(tag);
+      }
+
+      // Temperature range validation for templates
+      if (typeof tmpl.temperature !== 'number' || tmpl.temperature < 0 || tmpl.temperature > 2) {
+        issues.push({
+          type: 'warning',
+          file: tmpl.filePath,
+          message: `Template "${tmpl.name}" has temperature ${tmpl.temperature} outside valid range (0-2)`,
+          field: 'temperature',
+        });
       }
     }
   }
@@ -737,6 +788,33 @@ function validateAgentDir(
 
         // Add name to known names
         knownNames.add(name);
+
+        // Validate temperature range
+        const tempVal = (fm as Record<string, unknown>).temperature;
+        if (tempVal !== undefined) {
+          if (typeof tempVal !== 'number' || tempVal < 0 || tempVal > 2) {
+            issues.push({
+              type: 'warning',
+              file: filePath,
+              message: `Agent "${name}" has temperature ${tempVal} outside valid range (0-2)`,
+              field: 'temperature',
+            });
+          }
+        }
+
+        // Validate recommendedMode
+        const modeVal = (fm as Record<string, unknown>).recommendedMode;
+        if (modeVal !== undefined) {
+          const validModes = ['quick', 'normal', 'deep'];
+          if (!validModes.includes(String(modeVal))) {
+            issues.push({
+              type: 'warning',
+              file: filePath,
+              message: `Agent "${name}" has invalid recommendedMode "${modeVal}" — valid values: ${validModes.join(', ')}`,
+              field: 'recommendedMode',
+            });
+          }
+        }
       } catch (err) {
         issues.push({
           type: 'error',
@@ -839,7 +917,11 @@ export function isValidTag(tag: string): boolean {
 
 // ─── Path Helpers ───────────────────────────────────────────────────
 
-function getTemplatesDir(): string {
+function getTemplatesDir(): string | null {
+  const templatesDir = getPackageTemplatesDir();
+  if (templatesDir) return templatesDir;
+  
+  // Fallback: derive from module location
   const srcDir = path.dirname(fileURLToPath(import.meta.url));
   return path.join(srcDir, '..', 'templates');
 }

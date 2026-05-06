@@ -22,7 +22,7 @@ export interface FileMetadata {
   /** Safe display path (relative or sanitized, never absolute user paths) */
   sourcePath: string;
   /** Source kind for API consumers to understand the path origin */
-  sourcePathKind: 'builtin' | 'project' | 'user' | 'external';
+  sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
   createdAt: string | null;  // ISO 8601 or null if unavailable
   lastModified: string | null;  // ISO 8601 or null if unavailable
   sizeBytes: number | null;  // bytes or null if unavailable

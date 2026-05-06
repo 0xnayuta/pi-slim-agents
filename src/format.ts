@@ -239,6 +239,7 @@ export interface AgentJsonItem {
   recommendedMode: string;
   metadata?: {
     sourcePath: string;
+    sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
     createdAt: string | null;
     lastModified: string | null;
     sizeBytes: number | null;
@@ -265,6 +266,7 @@ export function formatAgentsJson(
       recommendedMode: a.recommendedMode ?? 'normal',
       metadata: a.metadata ? {
         sourcePath: a.metadata.sourcePath,
+        sourcePathKind: a.metadata.sourcePathKind ?? 'unknown',
         createdAt: a.metadata.createdAt,
         lastModified: a.metadata.lastModified,
         sizeBytes: a.metadata.sizeBytes,
@@ -294,6 +296,7 @@ export interface TemplateJsonItem {
   recommendedMode: string;
   metadata?: {
     sourcePath: string;
+    sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
     createdAt: string | null;
     lastModified: string | null;
     sizeBytes: number | null;
@@ -335,7 +338,13 @@ export function formatTemplatesJsonFull(
     aliases: string[];
     tags: string[];
     recommendedMode: string;
-    metadata?: { sourcePath: string; createdAt: string | null; lastModified: string | null; sizeBytes: number | null } | null;
+    metadata?: {
+      sourcePath: string;
+      sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
+      createdAt: string | null;
+      lastModified: string | null;
+      sizeBytes: number | null;
+    } | null;
   }>,
   filter: TemplateFilter & { regex?: RegExp | null },
 ): string {

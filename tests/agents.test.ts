@@ -3996,6 +3996,358 @@ await test('agentResult JSON does not contain API key fields', async () => {
   assert.ok(json.includes('[redacted]'), 'should have redaction text');
 });
 
+// ─── R2 Fix Tests: Metadata and Path Privacy ────────────────────────
+
+await test('FileMetadata includes sourcePathKind', async () => {
+  const { collectFileMetadata } = await import('../src/metadata.js');
+  const metadata = collectFileMetadata(path.join(PROJECT_ROOT, 'agents', 'explorer.md'));
+  assert.ok('sourcePathKind' in metadata, 'metadata should have sourcePathKind field');
+  assert.ok(['builtin', 'project', 'user', 'external', 'unknown'].includes(metadata.sourcePathKind), 
+    'sourcePathKind should be valid enum value');
+});
+
+await test('/agents --format json includes metadata.sourcePathKind', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const agents = loadAgents(PROJECT_ROOT, {});
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  
+  assert.ok(parsed.items.length > 0, 'should have agent items');
+  for (const item of parsed.items) {
+    if (item.metadata) {
+      assert.ok('sourcePathKind' in item.metadata, 'item.metadata should have sourcePathKind');
+      assert.ok(['builtin', 'project', 'user', 'external', 'unknown'].includes(item.metadata.sourcePathKind),
+        'sourcePathKind should be valid enum value');
+    }
+  }
+});
+
+await test('JSON output does not contain absolute temp directory paths', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const agents = loadAgents(PROJECT_ROOT, {});
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  
+  // Check that no agent metadata contains an absolute path starting with a drive letter or /tmp
+  for (const item of parsed.items) {
+    if (item.metadata?.sourcePath) {
+      assert.ok(!item.metadata.sourcePath.match(/^[A-Z]:\\/), 'should not contain Windows absolute paths');
+      assert.ok(!item.metadata.sourcePath.includes('\\Users\\'), 'should not contain Windows user paths');
+      assert.ok(!item.metadata.sourcePath.includes('/tmp/'), 'should not contain /tmp paths');
+      // sourcePath should be relative or safe display path
+      assert.ok(!item.metadata.sourcePath.includes('AppData\\Local'), 'should not contain AppData paths');
+    }
+  }
+});
+
+await test('agent.sourcePath is sanitized (not absolute)', async () => {
+  const agents = loadAgents(PROJECT_ROOT, {});
+  
+  // agent.sourcePath should be safe display path, not absolute
+  for (const agent of agents) {
+    if (agent.sourcePath) {
+      // Should not be a raw absolute path
+      assert.ok(!agent.sourcePath.match(/^[A-Z]:\\/), 'sourcePath should not be Windows absolute path');
+      assert.ok(!agent.sourcePath.startsWith('/home/'), 'sourcePath should not be Unix home path');
+      assert.ok(!agent.sourcePath.includes('\\Users\\'), 'sourcePath should not contain Windows user dir');
+    }
+  }
+});
+
+// ─── R2 Fix Tests: recommendedMode Validation ────────────────────
+
+await test('valid recommendedMode values pass through', async () => {
+  const templates = loadTemplates();
+  assert.ok(templates.ok, 'templates should load');
+  
+  for (const tmpl of templates.templates) {
+    assert.ok(['quick', 'normal', 'deep'].includes(tmpl.recommendedMode),
+      `template "${tmpl.name}" recommendedMode "${tmpl.recommendedMode}" should be valid`);
+  }
+});
+
+await test('recommendedMode validation catches invalid values in validateAgents', async () => {
+  // Create a temp agent with invalid recommendedMode
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  
+  const agentPath = path.join(agentsDir, 'test-agent.md');
+  fs.writeFileSync(agentPath, `---
+name: test-agent
+description: Test agent
+recommendedMode: invalid-mode
+---
+You are a test agent.`);
+
+  try {
+    const result = validateAgents(tmpDir);
+    const modeIssues = result.issues.filter(i => i.field === 'recommendedMode');
+    assert.ok(modeIssues.length > 0, 'should have recommendedMode validation issue');
+    assert.ok(modeIssues[0].message.includes('invalid-mode'), 'should mention the invalid value');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ─── R2 Fix Tests: Temperature Range Validation ───────────────────
+
+await test('temperature=0 and temperature=2 are valid', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  
+  // Test temperature=0
+  const agent1Path = path.join(agentsDir, 'temp-zero.md');
+  fs.writeFileSync(agent1Path, `---
+name: temp-zero
+description: Test
+temperature: 0
+---
+You are test.`);
+  
+  // Test temperature=2
+  const agent2Path = path.join(agentsDir, 'temp-two.md');
+  fs.writeFileSync(agent2Path, `---
+name: temp-two
+description: Test
+temperature: 2
+---
+You are test.`);
+
+  try {
+    const result = validateAgents(tmpDir);
+    const tempIssues = result.issues.filter(i => i.field === 'temperature');
+    // Neither should trigger validation issues
+    assert.ok(!tempIssues.some(i => i.message.includes('temp-zero')), 'temp=0 should be valid');
+    assert.ok(!tempIssues.some(i => i.message.includes('temp-two')), 'temp=2 should be valid');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('temperature=-1 and temperature=3 are invalid', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  
+  // Test temperature=-1
+  const agent1Path = path.join(agentsDir, 'temp-neg.md');
+  fs.writeFileSync(agent1Path, `---
+name: temp-neg
+description: Test
+temperature: -1
+---
+You are test.`);
+  
+  // Test temperature=3
+  const agent2Path = path.join(agentsDir, 'temp-high.md');
+  fs.writeFileSync(agent2Path, `---
+name: temp-high
+description: Test
+temperature: 3
+---
+You are test.`);
+
+  try {
+    const result = validateAgents(tmpDir);
+    const tempIssues = result.issues.filter(i => i.field === 'temperature');
+    
+    assert.ok(tempIssues.length >= 2, 'should have at least 2 temperature issues');
+    const negIssue = tempIssues.find(i => i.message.includes('temp-neg'));
+    const highIssue = tempIssues.find(i => i.message.includes('temp-high'));
+    assert.ok(negIssue, 'should catch negative temperature');
+    assert.ok(highIssue, 'should catch temperature > 2');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('non-numeric temperature is invalid', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  
+  const agentPath = path.join(agentsDir, 'temp-string.md');
+  fs.writeFileSync(agentPath, `---
+name: temp-string
+description: Test
+temperature: "hot"
+---
+You are test.`);
+
+  try {
+    const result = validateAgents(tmpDir);
+    const tempIssues = result.issues.filter(i => i.field === 'temperature');
+    assert.ok(tempIssues.length > 0, 'should have temperature validation issue for string value');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ─── R2 Fix Tests: Config Schema Validation ───────────────────────
+
+await test('valid config passes schema validation', async () => {
+  const { loadAndValidateConfig } = await import('../src/config.js');
+  
+  // Create a valid temp config
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const configDir = path.join(tmpDir, '.pi');
+  fs.mkdirSync(configDir, { recursive: true });
+  
+  const configPath = path.join(configDir, 'slim-agents.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    runnerMode: 'prompt-only',
+    outputTemplate: true,
+    history: {
+      persistent: false,
+      retention: 100
+    },
+    agents: {
+      explorer: { temperature: 0.5 }
+    }
+  }, null, 2));
+
+  try {
+    const result = loadAndValidateConfig(tmpDir);
+    assert.ok(result.ok, 'valid config should pass validation');
+    assert.ok(result.warnings.length === 0, 'should have no warnings');
+    assert.equal(result.config.runnerMode, 'prompt-only');
+    assert.equal(result.config.outputTemplate, true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('invalid runnerMode is caught', async () => {
+  const { loadAndValidateConfig } = await import('../src/config.js');
+  
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const configDir = path.join(tmpDir, '.pi');
+  fs.mkdirSync(configDir, { recursive: true });
+  
+  const configPath = path.join(configDir, 'slim-agents.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    runnerMode: 'invalid-mode'
+  }));
+
+  try {
+    const result = loadAndValidateConfig(tmpDir);
+    // runnerMode warning should exist
+    const runnerWarnings = result.warnings.filter(w => w.field.includes('runnerMode'));
+    assert.ok(runnerWarnings.length > 0, 'should warn about invalid runnerMode');
+    // Invalid value should be cleared
+    assert.ok(!result.config.runnerMode || result.config.runnerMode === 'prompt-only',
+      'invalid runnerMode should be cleared');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('invalid agent temperature is caught', async () => {
+  const { loadAndValidateConfig } = await import('../src/config.js');
+  
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const configDir = path.join(tmpDir, '.pi');
+  fs.mkdirSync(configDir, { recursive: true });
+  
+  const configPath = path.join(configDir, 'slim-agents.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    agents: {
+      explorer: { temperature: 5 } // Invalid: > 2
+    }
+  }));
+
+  try {
+    const result = loadAndValidateConfig(tmpDir);
+    const tempWarnings = result.warnings.filter(w => w.field.includes('temperature'));
+    assert.ok(tempWarnings.length > 0, 'should warn about invalid temperature');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('unknown config fields produce warnings', async () => {
+  const { loadAndValidateConfig } = await import('../src/config.js');
+  
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const configDir = path.join(tmpDir, '.pi');
+  fs.mkdirSync(configDir, { recursive: true });
+  
+  const configPath = path.join(configDir, 'slim-agents.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    unknownField: 'value',
+    runnerMode: 'prompt-only'
+  }));
+
+  try {
+    const result = loadAndValidateConfig(tmpDir);
+    const unknownWarnings = result.warnings.filter(w => w.field.includes('unknownField'));
+    assert.ok(unknownWarnings.length > 0, 'should warn about unknown field');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('invalid history.retention is caught', async () => {
+  const { loadAndValidateConfig } = await import('../src/config.js');
+  
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  const configDir = path.join(tmpDir, '.pi');
+  fs.mkdirSync(configDir, { recursive: true });
+  
+  const configPath = path.join(configDir, 'slim-agents.json');
+  fs.writeFileSync(configPath, JSON.stringify({
+    history: {
+      retention: -5  // Invalid: negative
+    }
+  }));
+
+  try {
+    const result = loadAndValidateConfig(tmpDir);
+    const retentionWarnings = result.warnings.filter(w => w.field.includes('retention'));
+    assert.ok(retentionWarnings.length > 0, 'should warn about invalid retention');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ─── R2 Fix Tests: Package Root Detection ──────────────────────────
+
+await test('findPackageRoot locates package', async () => {
+  const { findPackageRoot } = await import('../src/utils.js');
+  const root = findPackageRoot();
+  assert.ok(root !== null, 'should find package root');
+  assert.ok(fs.existsSync(path.join(root!, 'package.json')), 'should have package.json');
+});
+
+await test('resolvePackageAssetPath works for agents', async () => {
+  const { resolvePackageAssetPath } = await import('../src/utils.js');
+  const agentsPath = resolvePackageAssetPath('agents');
+  assert.ok(agentsPath !== null, 'should resolve agents path');
+  assert.ok(fs.existsSync(agentsPath!), 'agents directory should exist');
+});
+
+await test('resolvePackageAssetPath works for templates', async () => {
+  const { resolvePackageAssetPath } = await import('../src/utils.js');
+  const templatesPath = resolvePackageAssetPath('templates');
+  assert.ok(templatesPath !== null, 'should resolve templates path');
+  assert.ok(fs.existsSync(templatesPath!), 'templates directory should exist');
+});
+
+await test('getPackageAgentsDir returns valid path', async () => {
+  const { getPackageAgentsDir } = await import('../src/utils.js');
+  const agentsDir = getPackageAgentsDir();
+  assert.ok(agentsDir !== null, 'should return agents dir');
+  assert.ok(fs.existsSync(agentsDir!), 'agents dir should exist');
+});
+
+await test('getPackageTemplatesDir returns valid path', async () => {
+  const { getPackageTemplatesDir } = await import('../src/utils.js');
+  const templatesDir = getPackageTemplatesDir();
+  assert.ok(templatesDir !== null, 'should return templates dir');
+  assert.ok(fs.existsSync(templatesDir!), 'templates dir should exist');
+});
 
 // ─── Summary ────────────────────────────────────────────────────────
 

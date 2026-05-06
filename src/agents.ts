@@ -22,6 +22,7 @@ import type {
 } from './types.js';
 import {
   AGENTS_DIR_NAME,
+  getPackageAgentsDir,
   isSafeAgentName,
   nameFromFilename,
   parseAgentFrontmatter,
@@ -30,6 +31,7 @@ import {
 } from './utils.js';
 import { collectFileMetadata } from './metadata.js';
 import { getAgentOverride, isAgentDisabled } from './config.js';
+import { safeDisplayPath } from './security.js';
 
 // ─── Public API ─────────────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ import { getAgentOverride, isAgentDisabled } from './config.js';
  */
 export function loadAgents(cwd: string, config: SlimAgentsConfig): AgentDefinition[] {
   const entries = discoverAgentFiles(cwd, config);
-  const resolved = resolveAgents(entries, config);
+  const resolved = resolveAgents(entries, config, cwd);
   const sanitized = validateAndSanitizeAliases(resolved);
   return sanitized.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 }
@@ -78,7 +80,7 @@ function discoverAgentFiles(cwd: string, config: SlimAgentsConfig): AgentFileEnt
       source: 'package' as const,
     })),
     // 3. Package built-in
-    { dir: getPackageAgentsDir(), source: 'package' },
+    { dir: getBuiltinAgentsDir(), source: 'package' },
     // 2. User-level
     { dir: USER_AGENTS_DIR, source: 'user' },
     // 1. Project-level (highest priority)
@@ -123,6 +125,7 @@ function scanAgentDir(dirPath: string, source: AgentSource): AgentFileEntry[] {
 function resolveAgents(
   entries: AgentFileEntry[],
   config: SlimAgentsConfig,
+  cwd: string,
 ): AgentDefinition[] {
   const agents: AgentDefinition[] = [];
 
@@ -144,6 +147,8 @@ function resolveAgents(
         : [];
 
       // Build agent definition from frontmatter + markdown body.
+      // Use safe display path for sourcePath to avoid leaking absolute paths
+      const safePath = safeDisplayPath(entry.filePath, cwd);
       const fileMetadata: FileMetadata = collectFileMetadata(entry.filePath);
       const agent: AgentDefinition = {
         name: agentName,
@@ -151,16 +156,17 @@ function resolveAgents(
           override?.description ??
           (typeof fm.description === 'string' ? fm.description : `Specialist agent: ${agentName}`),
         body: buildPrompt(body, override?.prompt, override?.appendPrompt),
-        temperature: override?.temperature ?? (typeof fm.temperature === 'number' ? fm.temperature : 0.2),
+        temperature: resolveTemperature(override?.temperature, fm.temperature),
         role: typeof fm.role === 'string' ? fm.role : agentName,
         readonly: fm.readonly === true,
         tags: override?.tags ?? tags,
         aliases,
         enabled: !isAgentDisabled(config, agentName),
         order: typeof fm.order === 'number' ? fm.order : 100,
-        sourcePath: entry.filePath,
+        sourcePath: safePath, // Safe display path for diagnostics
         source: entry.source,
         metadata: fileMetadata,
+        recommendedMode: resolveRecommendedMode(fm.recommendedMode),
       };
 
       agents.push(agent);
@@ -233,11 +239,45 @@ function buildPrompt(
   return body;
 }
 
+/**
+ * Resolve temperature with range validation.
+ * Falls back to default if invalid.
+ */
+function resolveTemperature(configTemp?: number, frontmatterTemp?: unknown): number {
+  if (configTemp !== undefined) {
+    if (typeof configTemp === 'number' && configTemp >= 0 && configTemp <= 2) {
+      return configTemp;
+    }
+    console.warn(`[slim-agents] Invalid config temperature ${configTemp}, falling back to default`);
+  }
+  if (typeof frontmatterTemp === 'number' && frontmatterTemp >= 0 && frontmatterTemp <= 2) {
+    return frontmatterTemp;
+  }
+  return 0.2; // default
+}
+
+/**
+ * Resolve recommendedMode with validation.
+ * Falls back to 'normal' if invalid or missing.
+ */
+function resolveRecommendedMode(mode?: unknown): string {
+  if (typeof mode === 'string' && ['quick', 'normal', 'deep'].includes(mode)) {
+    return mode;
+  }
+  if (mode !== undefined && typeof mode !== 'string') {
+    console.warn(`[slim-agents] Invalid recommendedMode type, falling back to 'normal'`);
+  }
+  return 'normal';
+}
+
 // ─── Package Built-in Agents Dir ────────────────────────────────────
 
-function getPackageAgentsDir(): string {
-  // When running as an installed package, agents/ is relative to package root.
-  // import.meta.url points to the compiled .js file in src/.
+function getBuiltinAgentsDir(): string {
+  // Use the robust package root detection
+  const agentsDir = getPackageAgentsDir();
+  if (agentsDir) return agentsDir;
+  
+  // Fallback to relative path from module location
   const srcDir = path.dirname(fileURLToPath(import.meta.url));
   return path.join(srcDir, '..', AGENTS_DIR_NAME);
 }
