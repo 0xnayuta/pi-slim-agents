@@ -817,6 +817,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
             replayOf: effectiveReplayOf,
             providerCallAvailable: providerCallStatus?.available ?? false,
             output,
+            taskSummary: task,
           }),
           'info',
         );

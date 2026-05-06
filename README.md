@@ -261,10 +261,18 @@ All commands support `--format json`:
   "status": "success",
   "durationMs": 123,
   "historyId": 12,
+  "replayOf": null,
   "providerCall": {
     "available": false,
     "fallback": false,
     "reason": "Provider-call not available in this environment"
+  },
+  "task": {
+    "summary": "review this design"
+  },
+  "output": {
+    "text": "Delegated to @oracle...",
+    "format": "text"
   }
 }
 ```

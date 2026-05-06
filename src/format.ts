@@ -164,6 +164,8 @@ export function formatAgentResultJson(params: {
   error?: string;
   output?: string | null;
   availableAgents?: string[];
+  /** Task summary for JSON output (truncated). Defaults to requestedAgent for backward compat. */
+  taskSummary?: string;
 }): string {
   const output: AgentResultJsonOutput = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -185,7 +187,7 @@ export function formatAgentResultJson(params: {
         : 'Provider-call not available in this environment',
     },
     task: {
-      summary: truncateForJson(params.requestedAgent, 200),
+      summary: truncateForJson(params.taskSummary ?? params.requestedAgent, 200),
     },
     output: null,
   };

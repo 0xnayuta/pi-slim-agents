@@ -4058,11 +4058,81 @@ await test('formatAgentsJson task field in agentResult', async () => {
     historyId: 1,
     providerCallAvailable: false,
     output: 'result text',
+    taskSummary: 'review this design',
   });
   const parsed = JSON.parse(json);
   assert.ok(parsed.task, 'should have task field');
   assert.ok(typeof parsed.task.summary === 'string', 'task.summary should be string');
+  assert.equal(parsed.task.summary, 'review this design', 'task.summary should contain the actual task');
 });
+
+await test('formatAgentResultJson taskSummary is used, not requestedAgent', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'arch',  // alias
+    resolvedAgent: 'oracle',
+    aliasUsed: true,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'result',
+    taskSummary: 'review this design',
+  });
+  const parsed = JSON.parse(json);
+  // task.summary should be the actual task, not the agent name or alias
+  assert.equal(parsed.task.summary, 'review this design',
+    'task.summary should contain task text, not agent name');
+  assert.equal(parsed.requestedAgent, 'arch',
+    'requestedAgent should still be the alias');
+  assert.equal(parsed.resolvedAgent, 'oracle',
+    'resolvedAgent should still be the resolved agent name');
+});
+
+await test('formatAgentResultJson taskSummary defaults to requestedAgent for backward compat', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  // Don't pass taskSummary - should fall back to requestedAgent
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'result',
+  });
+  const parsed = JSON.parse(json);
+  // For backward compat when taskSummary is not provided, falls back to requestedAgent
+  assert.ok(parsed.task.summary.length > 0, 'task.summary should have content');
+});
+
+await test('formatAgentResultJson long taskSummary is truncated', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const longTask = 'A'.repeat(300);
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'result',
+    taskSummary: longTask,
+  });
+  const parsed = JSON.parse(json);
+  // Should be truncated to ~200 chars (truncateForJson uses 200 max)
+  assert.ok(parsed.task.summary.length <= 200,
+    `task.summary should be truncated to <= 200 chars, got ${parsed.task.summary.length}`);
+});
+
 
 await test('formatAgentsJson output text field', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
