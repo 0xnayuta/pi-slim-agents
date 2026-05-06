@@ -106,3 +106,134 @@ pi-slim-agents is **inspired by** but does **not copy** oh-my-opencode-slim. Key
 | Runtime | Full orchestration (scheduler, council, multiplexer) | Minimal prompt-based delegation |
 | Custom agents | Config-based overrides | File-based (project/user/package) |
 | Dependencies | OpenCode SDK | pi-coding-agent only |
+
+## JSON Output & Machine-Readable Formats (M10)
+
+All commands that show data support `--format json` for scriptable, machine-readable output. JSON output:
+
+- Is always valid JSON (parseable by any JSON library)
+- Contains no Markdown formatting, ANSI codes, or API keys
+- Does not include full prompt bodies or agent results
+- Uses `schemaVersion` for forward-compatibility
+- Uses camelCase field names throughout
+
+### JSON Schema Design
+
+Each JSON output includes a top-level envelope:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "<kind>",
+  ...
+}
+```
+
+| kind | Description |
+|------|-------------|
+| `agents` | Agent list with filters applied |
+| `templates` | Template list with filters applied |
+| `status` | Runtime status report |
+| `history` | Delegation history records |
+| `metrics` | Delegation metrics summary |
+| `validation` | Agent validation results |
+
+### schemaVersion Compatibility
+
+If the JSON schema changes in a future release, `schemaVersion` will be incremented. Consumers should check `schemaVersion` before parsing.
+
+### Privacy in JSON Output
+
+- **No API keys** — Provider errors are sanitized before inclusion
+- **No full prompts** — Agent `body` field is never included in JSON
+- **No full results** — Provider-call outputs are not included
+- **No full task/context** — History JSON only includes `taskSummary` (truncated to 80 chars)
+
+### Tags, Aliases, and JSON Output
+
+Tags and aliases are included in JSON output as arrays. These fields enable:
+
+- **Script filtering**: `jq '.items[] | select(.tags | contains("security"))'`
+- **External tooling**: Build dashboards from `/agents metrics --format json`
+- **CI integration**: Validate agent files via `/agents validate --format json`
+
+### Regex Search Design
+
+`--regex` provides advanced pattern matching for power users. It is **AND-combined** with other filters:
+
+```text
+/agents --regex "^cpp"               # matches name, description, aliases, tags
+/agents --tag review --regex "oracle" # must have 'review' tag AND match 'oracle'
+/agents templates --regex "writer|reviewer"
+```
+
+Regex defaults to **case-insensitive** (`i` flag) for simplicity. Anchors (`^`, `$`) apply to the full searchable string, not individual fields.
+
+**Recommendation**: For simple searches, prefer `--query` (plain text, case-insensitive). Reserve `--regex` for complex patterns.
+
+### Tag Autocomplete Design Reservation (Future)
+
+Tag autocomplete is **not implemented** in this release. It requires pi-mono command completion API support. Design reservation:
+
+**Candidates** would come from:
+- Agent names (from loaded agents)
+- Agent aliases (from loaded agents)
+- Tags (aggregated from all agents/templates)
+- Template names
+
+**Implementation approach** (future):
+1. Aggregate all unique tags from `loadAgents()` + `loadTemplates()`
+2. Register a completion provider via pi-mono API
+3. On `--tag<Tab>`, return matching tags
+
+This is **out of scope for M10**.
+
+### Token Usage Tracking Design Reservation (Future)
+
+Real token usage tracking requires a working provider-call integration. Design reservation:
+
+```json
+"tokenUsage": {
+  "available": false,
+  "reason": "provider-call usage data unavailable"
+}
+```
+
+When provider-call works, `tokenUsage` would be populated from pi-ai response metadata. Without real integration, it remains `available: false`.
+
+**Out of scope**: Tokenizer dependencies, estimated token counts, cost tracking.
+
+### Format Layer Architecture
+
+The formatter layer (`src/format.ts`) separates data generation from presentation:
+
+```
+Command Handler
+    │
+    ├─ parseFlags(args) → flags{}
+    ├─ parseFormatOption(flags) → 'text' | 'json'
+    ├─ parseRegexOption(flags) → RegExp | null
+    │
+    ├─ Load data (loadAgents, historyStore, etc.)
+    │
+    ├─ filterAgents / filterTemplates (with regex)
+    │
+    └─ Format:
+           formatAgentsJson() → JSON string
+           formatTemplatesJson() → JSON string
+           formatStatusJson() → JSON string
+           formatHistoryJson() → JSON string
+           formatMetricsJson() → JSON string
+           formatValidationJson() → JSON string
+           ...
+           OR
+           formatAgentList() → text string  (existing)
+           formatTemplatesList() → text string
+           ...
+```
+
+This separation ensures:
+1. JSON formatters never produce Markdown
+2. Text formatters remain unchanged
+3. New output formats can be added without touching business logic
+4. Every formatter is independently testable

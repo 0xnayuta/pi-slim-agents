@@ -133,6 +133,50 @@
 - [x] Templates directory included in package distribution
 - [x] 223 tests covering all new functionality
 
+## v0.1.0 — M9: Agent Search / Filter + Tags Metadata
+
+**Enhanced search, filtering, and tag metadata.**
+
+- [x] Tags metadata — All built-in agents and templates have tags for categorization
+- [x] `/agents --tag <tag>` — Filter agents by tag (AND semantics for multiple tags)
+- [x] `/agents --query <text>` — Case-insensitive search across name, description, aliases, tags
+- [x] `/agents --readonly | --writable` — Filter by read-only status
+- [x] `/agents --enabled | --disabled` — Filter by enabled status
+- [x] `/agents --source builtin | user | project` — Filter by source
+- [x] `/agents templates --tag <tag>` — Filter templates by tag
+- [x] `/agents templates --query <text>` — Search templates
+- [x] `/agents validate` — Now checks tags (validity, duplicates, missing tags, count limits)
+- [x] Tags validation in `/agents validate`
+- [x] **M9 feedback candidates**: Provider-call real integration, pi-ai importability fix, token usage tracking, `/agents --regex`, tag autocomplete in `/agent`, `/agents --format json`
+
+## v0.1.0 — M10: Machine-readable Output / Regex Search / Scriptability
+
+**JSON output and regex search for scripting, CI, and external tool integration.**
+
+- [x] `--format json` for all list/status/history/metrics/validate commands
+- [x] `/agents --format json` — JSON list of agents with filters
+- [x] `/agents templates --format json` — JSON list of templates with filters
+- [x] `/agents status --format json` — JSON status report
+- [x] `/agents history --format json` — JSON delegation history with filters
+- [x] `/agents metrics --format json` — JSON delegation metrics
+- [x] `/agents validate --format json` — JSON validation results
+- [x] All JSON outputs include `schemaVersion: 1` and `kind` field
+- [x] All JSON outputs use camelCase field names
+- [x] `--format text` is the default (backward compatible)
+- [x] Unsupported `--format` values return clear error with supported list
+- [x] `/agents --regex <pattern>` — Regex search (matches name, description, aliases, tags)
+- [x] `/agents templates --regex <pattern>` — Regex search for templates
+- [x] Regex uses case-insensitive flag (`i`) by default
+- [x] Invalid regex patterns return clear errors (no crashes)
+- [x] Regex AND-combined with other filters (`--tag --regex --query`)
+- [x] Text output unchanged (no Markdown in JSON)
+- [x] JSON outputs exclude: API keys, full prompts, full results, full task/context
+- [x] Unified formatter layer (`src/format.ts`)
+- [x] Tag autocomplete design reservation documented
+- [x] Token usage tracking reservation documented
+- [x] 47 new M10 tests (302 total, 1 pre-existing Windows-specific `/proc` failure)
+- [x] Updated `docs/design.md` with JSON output, regex, autocomplete, token usage design
+
 ## v0.3.0 — Planned
 
 **Enhanced delegation and agent capabilities.**

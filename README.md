@@ -4,18 +4,26 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M9) — Agent Search / Filter + Tags Metadata.**
+**v0.1.0 (M10) — Machine-readable Output / Regex Search / Scriptability.**
 
 This release adds:
-- **Tags metadata** — All built-in agents and templates have tags for categorization
-- **`/agents --tag <tag>`** — Filter agents by tag (AND semantics for multiple tags)
-- **`/agents --query <text>`** — Case-insensitive search across name, description, aliases, tags
-- **`/agents --readonly | --writable`** — Filter by read-only status
-- **`/agents --enabled | --disabled`** — Filter by enabled status
-- **`/agents --source builtin | user | project`** — Filter by source
-- **`/agents templates --tag <tag>`** — Filter templates by tag
-- **`/agents templates --query <text>`** — Search templates
-- **`/agents validate`** — Now checks tags (validity, duplicates, missing tags, count limits)
+- **`--format json`** — JSON output for all data commands (agents, templates, status, history, metrics, validate)
+- **`/agents --format json`** — JSON list of agents with applied filters
+- **`/agents templates --format json`** — JSON list of templates
+- **`/agents status --format json`** — JSON runtime status
+- **`/agents history --format json`** — JSON delegation history
+- **`/agents metrics --format json`** — JSON delegation metrics
+- **`/agents validate --format json`** — JSON validation results
+- **`/agents --regex <pattern>`** — Regex search (matches name, description, aliases, tags; case-insensitive)
+- **`/agents templates --regex <pattern>`** — Regex search for templates
+- All JSON outputs include `schemaVersion` and `kind` fields for forward compatibility
+- JSON outputs exclude API keys, full prompts, full results, and full task/context
+- Unified formatter layer (`src/format.ts`) separates text and JSON output
+
+### M10 does not add (see roadmap)
+- Real provider-call integration (still falls back to prompt-only)
+- Token usage tracking (still unavailable)
+- Tag autocomplete (future, requires pi-mono completion API)
 
 | Mode | Behavior |
 |------|----------|
@@ -30,13 +38,151 @@ This release adds:
 - Run council/voting flows
 - Support parallel agent execution
 - Support agent composition or pipelines
-- Track real token usage
+- Track real token usage (still unavailable — requires real provider-call)
 
 ### Provider-call status
 
 The provider-call runner attempts to call the model via `@mariozechner/pi-ai`'s `complete()` function using the current session model and API key. Currently, `@mariozechner/pi-ai` is not directly importable from the extension's module context due to pnpm strict module resolution. When the import fails, the runner gracefully falls back to prompt-only mode with a clear message.
 
 When the pi-mono Extension API adds a direct model calling method (or pi-ai becomes importable), the provider-call runner will make real model calls automatically.
+
+## JSON Output
+
+All data commands support `--format json` for scriptable, machine-readable output. Default is `--format text` (backward compatible).
+
+**Commands supporting `--format json`**:
+
+```text
+/agents --format json
+/agents templates --format json
+/agents status --format json
+/agents history --format json
+/agents metrics --format json
+/agents validate --format json
+```
+
+All JSON outputs use a consistent envelope:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "agents",
+  "filters": {},
+  "count": 6,
+  "items": [...]
+}
+```
+
+### JSON Schema
+
+| kind | Description |
+|------|-------------|
+| `agents` | Agent list with applied filters |
+| `templates` | Template list with applied filters |
+| `status` | Runtime status (runnerMode, provider-call, agent counts, config paths) |
+| `history` | Delegation history records (id, timestamp, agent, status, duration, alias, replayOf) |
+| `metrics` | Delegation metrics (total, success/fallback/error counts, avg duration, per-agent, per-runnerMode) |
+| `validation` | Validation results (issues by type, checked counts, tags stats) |
+
+### JSON Privacy
+
+- No API keys or secrets
+- No full prompt bodies (`body` field excluded)
+- No full results from provider-call mode
+- History JSON only includes `taskSummary` (truncated to 80 chars), not full task text
+- Full task/context stored in-memory only (not in JSON output)
+
+### Example: /agents --format json
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "agents",
+  "filters": {},
+  "count": 6,
+  "items": [
+    {
+      "name": "oracle",
+      "description": "Strategic advisor and architecture reviewer",
+      "enabled": true,
+      "readonly": true,
+      "aliases": ["arch", "review", "judge"],
+      "tags": ["architecture", "review", "readonly"],
+      "source": "package",
+      "recommendedMode": "deep"
+    }
+  ]
+}
+```
+
+### Example: /agents metrics --format json
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "metrics",
+  "totalDelegations": 12,
+  "successCount": 10,
+  "fallbackCount": 2,
+  "errorCount": 0,
+  "averageDurationMs": 100,
+  "perAgent": { "oracle": 5, "explorer": 4, "fixer": 3 },
+  "perRunnerMode": { "prompt-only": 12 },
+  "tokenUsage": {
+    "available": false,
+    "reason": "provider-call usage data unavailable"
+  }
+}
+```
+
+### Script Examples
+
+Filter agents by tag and output JSON:
+```text
+/agents --tag review --format json
+```
+
+Filter history by agent and status:
+```text
+/agents history --agent oracle --status error --format json
+```
+
+Parse with jq:
+```bash
+# Get all agent names
+/agents --format json | jq '.items[].name'
+
+# Get enabled agents with 'security' tag
+/agents --format json | jq '.items[] | select(.tags | contains(["security"]))'
+
+# Get metrics summary
+/agents metrics --format json | jq '.totalDelegations'
+```
+
+## Regex Search
+
+For power users, `--regex` provides pattern-based filtering:
+
+```text
+/agents --regex "^cpp"               # agents whose searchable text starts with "cpp"
+/agents --regex "review"             # agents matching "review" anywhere
+/agents --regex "oracle|explorer"    # agents matching either pattern
+/agents templates --regex "writer|reviewer"
+```
+
+Regex is **AND-combined** with other filters:
+
+```text
+/agents --tag review --regex "oracle" # must have 'review' tag AND match 'oracle'
+/agents --source builtin --regex "fix" # builtin agents matching 'fix'
+```
+
+Features:
+- Case-insensitive (`i` flag) by default
+- Matches against: name, description, aliases, tags (joined)
+- Invalid patterns return a clear error (no crash)
+
+**Tip**: For simple text search, prefer `--query` (plain text, always works). Reserve `--regex` for complex patterns.
 
 ## Built-in agents
 
@@ -798,9 +944,9 @@ This version intentionally does **not** support:
 - MCP integration
 - Automatic code modification by delegated agents (in prompt-only mode)
 - Persistent delegation history (in-memory by default; optional JSONL persistence)
-- Real token usage statistics
-- Agent composition / pipelines
+- Real token usage statistics (still unavailable — requires real provider-call)
 - pi-ai importability fixes for provider-call
+- Tag autocomplete (future feature, requires pi-mono completion API)
 
 ## Development
 
@@ -811,7 +957,7 @@ pnpm test
 pnpm pack --dry-run
 ```
 
-The test suite uses `tsx` (no test framework). It covers 223 tests:
+The test suite uses `tsx` (no test framework). It covers 302 tests:
 - All 6 built-in agents load correctly
 - Frontmatter parsing (name, description, readonly, temperature, aliases, enabled, recommendedMode)
 - Invalid agent name rejection (spaces, slashes, path traversal, uppercase)

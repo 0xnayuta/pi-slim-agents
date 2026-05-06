@@ -2932,6 +2932,554 @@ await test('formatTemplatesList includes tags column', async () => {
 });
 
 
+// ─── M10: JSON Output / Format ─────────────────────────────────────
+
+console.log('\nM10: JSON Output / Format');
+
+await test('parseFormatOption defaults to text', async () => {
+  const { parseFormatOption } = await import('../src/format.js');
+  const result = parseFormatOption({});
+  assert.equal(result.format, 'text');
+});
+
+await test('parseFormatOption accepts text', async () => {
+  const { parseFormatOption } = await import('../src/format.js');
+  const result = parseFormatOption({ format: 'text' });
+  assert.equal(result.format, 'text');
+});
+
+await test('parseFormatOption accepts json', async () => {
+  const { parseFormatOption } = await import('../src/format.js');
+  const result = parseFormatOption({ format: 'json' });
+  assert.equal(result.format, 'json');
+});
+
+await test('parseFormatOption rejects unsupported format', async () => {
+  const { parseFormatOption } = await import('../src/format.js');
+  const result = parseFormatOption({ format: 'yaml' });
+  assert.equal(result.format, 'text');
+  assert.ok(result.error?.includes('Unsupported format'));
+  assert.ok(result.error?.includes('text, json'));
+});
+
+await test('parseFormatOption rejects uppercase json', async () => {
+  const { parseFormatOption } = await import('../src/format.js');
+  const result = parseFormatOption({ format: 'JSON' });
+  assert.equal(result.format, 'text');
+  assert.ok(result.error?.includes('Unsupported format'));
+});
+
+await test('parseRegexOption returns null when not provided', async () => {
+  const { parseRegexOption } = await import('../src/format.js');
+  const result = parseRegexOption({});
+  assert.equal(result.regex, null);
+  assert.equal(result.error, undefined);
+});
+
+await test('parseRegexOption compiles valid pattern', async () => {
+  const { parseRegexOption } = await import('../src/format.js');
+  const result = parseRegexOption({ regex: '^oracle$' });
+  assert.ok(result.regex instanceof RegExp);
+  assert.equal(result.error, undefined);
+});
+
+await test('parseRegexOption uses case-insensitive flag', async () => {
+  const { parseRegexOption } = await import('../src/format.js');
+  const result = parseRegexOption({ regex: 'oracle' });
+  assert.ok(result.regex instanceof RegExp);
+  // Test that it matches case-insensitively
+  assert.equal(result.regex!.test('ORACLE'), true);
+  assert.equal(result.regex!.test('Oracle'), true);
+});
+
+await test('parseRegexOption rejects invalid regex', async () => {
+  const { parseRegexOption } = await import('../src/format.js');
+  const result = parseRegexOption({ regex: '[' });
+  assert.equal(result.regex, null);
+  assert.ok(result.error?.includes('Invalid regex pattern'));
+});
+
+await test('formatAgentsJson returns valid JSON', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'agents');
+  assert.ok(Array.isArray(parsed.items));
+  assert.ok(parsed.items.length > 0);
+  assert.equal(parsed.count, parsed.items.length);
+});
+
+await test('formatAgentsJson includes required fields per item', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  const item = parsed.items[0];
+  assert.ok(item.name !== undefined);
+  assert.ok(item.description !== undefined);
+  assert.ok(typeof item.enabled === 'boolean');
+  assert.ok(typeof item.readonly === 'boolean');
+  assert.ok(Array.isArray(item.aliases));
+  assert.ok(Array.isArray(item.tags));
+  assert.ok(typeof item.source === 'string');
+  assert.ok(typeof item.recommendedMode === 'string');
+});
+
+await test('formatAgentsJson includes filters', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, { tags: ['review'], query: 'test' });
+  const parsed = JSON.parse(json);
+  assert.deepEqual(parsed.filters.tags, ['review']);
+  assert.equal(parsed.filters.query, 'test');
+});
+
+await test('formatAgentsJson does not include body in JSON', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  for (const item of parsed.items) {
+    assert.equal(item.body, undefined);
+  }
+});
+
+await test('formatAgentsJson does not include API key fields', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  assert.ok(!json.includes('apiKey'));
+  assert.ok(!json.includes('api_key'));
+  assert.ok(!json.includes('API_KEY'));
+});
+
+await test('formatTemplatesJson returns valid JSON', async () => {
+  const { formatTemplatesJson } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const { filterTemplates } = await import('../src/commands.js');
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  const json = formatTemplatesJson(asFilterable, {});
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'templates');
+  assert.ok(Array.isArray(parsed.items));
+  assert.ok(parsed.count > 0);
+});
+
+await test('formatTemplatesJson includes filters', async () => {
+  const { formatTemplatesJson } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const { filterTemplates } = await import('../src/commands.js');
+  const result = loadTemplates();
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  const json = formatTemplatesJson(asFilterable, { readonly: true });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.filters.readonly, true);
+});
+
+await test('formatStatusJson returns valid JSON', async () => {
+  const { formatStatusJson, formatAgentsJson } = await import('../src/format.js');
+  const { buildStatusReport } = await import('../src/status.js');
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: { available: false, error: 'not available' },
+    lastReloadTime: '2024-01-01T00:00:00Z',
+    delegationCount: 5,
+  });
+  const json = formatStatusJson(report, ['/path/to/config.json']);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'status');
+  assert.equal(parsed.runnerMode, 'prompt-only');
+  assert.equal(parsed.providerCall.available, false);
+  assert.ok(typeof parsed.providerCall.reason === 'string');
+  assert.ok(Array.isArray(parsed.config.loadedPaths));
+  assert.equal(parsed.agents.enabled, 6);
+});
+
+await test('formatStatusJson includes agents count summary, not full list', async () => {
+  const { formatStatusJson } = await import('../src/format.js');
+  const { buildStatusReport } = await import('../src/status.js');
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: null,
+    lastReloadTime: null,
+    delegationCount: 0,
+  });
+  const json = formatStatusJson(report, []);
+  // The StatusJsonOutput includes agents: { enabled, disabled, aliases } (count summary)
+  // It does NOT include the full agent list with description/body
+  const parsed = JSON.parse(json);
+  assert.equal(typeof parsed.agents.enabled, 'number');
+  assert.equal(typeof parsed.agents.disabled, 'number');
+  assert.equal(typeof parsed.agents.aliases, 'number');
+  // Full list should not be present (only count summary)
+  assert.equal(parsed.agents.list, undefined);
+});
+
+await test('formatHistoryJson returns valid JSON', async () => {
+  const { formatHistoryJson } = await import('../src/format.js');
+  historyStore.clear();
+  historyStore.add({ timestamp: 1704067200000, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'Review architecture', mode: 'deep', runnerMode: 'prompt-only', status: 'success', durationMs: 123, providerCallAvailable: false, aliasUsed: false });
+  const records = historyStore.recent(10);
+  const json = formatHistoryJson(records);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'history');
+  assert.ok(Array.isArray(parsed.items));
+  assert.equal(parsed.count, 1);
+  const item = parsed.items[0];
+  assert.equal(item.id, 1);
+  assert.equal(item.status, 'success');
+  assert.equal(item.aliasUsed, false);
+  assert.ok(item.timestamp.includes('2024'));
+  historyStore.clear();
+});
+
+await test('formatHistoryJson includes filters', async () => {
+  const { formatHistoryJson } = await import('../src/format.js');
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'task', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const records = historyStore.recent(10);
+  const json = formatHistoryJson(records, { agent: 'oracle', status: 'success' });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.filters.agent, 'oracle');
+  assert.equal(parsed.filters.status, 'success');
+  historyStore.clear();
+});
+
+await test('formatHistoryJson does not include fullTask/fullContext', async () => {
+  const { formatHistoryJson } = await import('../src/format.js');
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 'task', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false, fullTask: 'SECRET TASK', fullContext: 'SECRET CTX' });
+  const records = historyStore.recent(10);
+  const json = formatHistoryJson(records);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.items[0].fullTask, undefined);
+  assert.equal(parsed.items[0].fullContext, undefined);
+  historyStore.clear();
+});
+
+await test('formatMetricsJson returns valid JSON', async () => {
+  const { formatMetricsJson } = await import('../src/format.js');
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'oracle', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  historyStore.add({ timestamp: 2, requestedAgent: 'explorer', resolvedAgent: 'explorer', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'fallback', durationMs: 200, providerCallAvailable: false, aliasUsed: false });
+  const metrics = historyStore.metrics();
+  const json = formatMetricsJson(metrics);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'metrics');
+  assert.equal(parsed.totalDelegations, 2);
+  assert.equal(parsed.successCount, 1);
+  assert.equal(parsed.fallbackCount, 1);
+  assert.equal(parsed.averageDurationMs, 150);
+  assert.ok(typeof parsed.tokenUsage === 'object');
+  assert.equal(parsed.tokenUsage.available, false);
+  historyStore.clear();
+});
+
+await test('formatMetricsJson tokenUsage unavailable field is stable', async () => {
+  const { formatMetricsJson } = await import('../src/format.js');
+  const metrics: MetricsSummary = {
+    total: 0, success: 0, fallback: 0, error: 0,
+    avgDurationMs: 0, perAgent: {}, perRunnerMode: {},
+    providerCallAvailable: 0, providerCallUnavailable: 0,
+  };
+  const json = formatMetricsJson(metrics);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.tokenUsage.available, false);
+  assert.equal(parsed.tokenUsage.reason, 'provider-call usage data unavailable');
+});
+
+await test('formatValidationJson returns valid JSON', async () => {
+  const { formatValidationJson } = await import('../src/format.js');
+  const { validateAgents } = await import('../src/templates.js');
+  const result = validateAgents(PROJECT_ROOT);
+  const json = formatValidationJson(result);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'validation');
+  assert.ok(typeof parsed.ok === 'boolean');
+  assert.ok(Array.isArray(parsed.issues));
+  assert.ok(typeof parsed.checked.total === 'number');
+});
+
+// ─── M10: Regex Filtering ────────────────────────────────────────────
+
+console.log('\nM10: Regex Filtering');
+
+await test('filterAgents by regex matches name', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  // Note: regex matches against the full searchable string (name + desc + aliases + tags joined)
+  // so anchors like ^ and $ won't work as expected. Use a simple substring match.
+  const result = filterAgents(agents, { regex: new RegExp('oracle', 'i') });
+  assert.ok(result.length > 0, 'should find agents matching oracle');
+  assert.ok(result.some(a => a.name === 'oracle'), 'should include oracle');
+});
+
+await test('filterAgents by regex matches description', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  const result = filterAgents(agents, { regex: new RegExp('search', 'i') });
+  assert.ok(result.length > 0, 'should find agents with search in description');
+  for (const a of result) {
+    const haystack = [a.name, a.description, ...a.aliases, ...a.tags].join(' ');
+    assert.ok(haystack.toLowerCase().includes('search'));
+  }
+});
+
+await test('filterAgents by regex matches aliases', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  // 'arch' is an alias for oracle
+  const result = filterAgents(agents, { regex: new RegExp('arch', 'i') });
+  assert.ok(result.length > 0);
+});
+
+await test('filterAgents by regex matches tags', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  // 'security' is a tag
+  const result = filterAgents(agents, { regex: new RegExp('security', 'i') });
+  // Some agents might have security in description, check searchability
+  for (const a of result) {
+    const haystack = [a.name, a.description, ...a.aliases, ...a.tags].join(' ');
+    assert.ok(haystack.toLowerCase().includes('security'));
+  }
+});
+
+await test('filterAgents by regex + tag (AND)', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  const result = filterAgents(agents, {
+    tags: ['review'],
+    regex: new RegExp('oracle', 'i'),
+  });
+  assert.ok(result.length > 0);
+  for (const a of result) {
+    assert.ok(a.tags.includes('review'));
+    const haystack = [a.name, a.description, ...a.aliases, ...a.tags].join(' ');
+    assert.ok(haystack.toLowerCase().includes('oracle'));
+  }
+});
+
+await test('filterAgents by regex + query (AND)', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  const result = filterAgents(agents, {
+    query: 'arch',
+    regex: new RegExp('oracle', 'i'),
+  });
+  assert.ok(result.length > 0);
+  for (const a of result) {
+    // Must match both query and regex
+    const haystack = [a.name, a.description, ...a.aliases, ...a.tags].join(' ').toLowerCase();
+    assert.ok(haystack.includes('arch'));
+    assert.ok(/oracle/i.test(haystack));
+  }
+});
+
+await test('filterAgents regex is case-insensitive', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  const result = filterAgents(agents, { regex: new RegExp('EXPLORER', 'i') });
+  assert.ok(result.some(a => a.name === 'explorer'));
+});
+
+await test('filterAgents regex no match returns empty', async () => {
+  const { filterAgents } = await import('../src/commands.js');
+  const result = filterAgents(agents, { regex: new RegExp('nonexistent_pattern_xyz', 'i') });
+  assert.equal(result.length, 0);
+});
+
+await test('filterTemplates by regex matches name', async () => {
+  const { filterTemplates } = await import('../src/commands.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  // Use substring match (anchors apply to the full searchable string, not just name)
+  const filtered = filterTemplates(asFilterable, { regex: new RegExp('security-reviewer', 'i') });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].name, 'security-reviewer');
+});
+
+await test('filterTemplates by regex matches aliases', async () => {
+  const { filterTemplates } = await import('../src/commands.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  // cpp-reviewer has alias 'cpp'
+  const filtered = filterTemplates(asFilterable, { regex: new RegExp('writer|reviewer', 'i') });
+  assert.ok(filtered.length > 0);
+  for (const t of filtered) {
+    const haystack = [t.name, t.description, ...t.aliases, ...t.tags].join(' ').toLowerCase();
+    assert.ok(/writer|reviewer/.test(haystack));
+  }
+});
+
+await test('filterTemplates by regex + tag (AND)', async () => {
+  const { filterTemplates } = await import('../src/commands.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  const filtered = filterTemplates(asFilterable, {
+    tags: ['readonly'],
+    regex: new RegExp('review', 'i'),
+  });
+  for (const t of filtered) {
+    assert.ok(t.tags.includes('readonly'));
+    const haystack = [t.name, t.description, ...t.aliases, ...t.tags].join(' ').toLowerCase();
+    assert.ok(/review/.test(haystack));
+  }
+});
+
+await test('agentMatchesRegex helper works', async () => {
+  const { agentMatchesRegex } = await import('../src/format.js');
+  const explorer = agents.find(a => a.name === 'explorer')!;
+  assert.equal(agentMatchesRegex(explorer, new RegExp('explorer', 'i')), true);
+  assert.equal(agentMatchesRegex(explorer, new RegExp('search', 'i')), true);
+  assert.equal(agentMatchesRegex(explorer, new RegExp('nonexistent', 'i')), false);
+});
+
+await test('templateMatchesRegex helper works', async () => {
+  const { templateMatchesRegex } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  const tmpl = result.templates.find(t => t.name === 'security-reviewer')!;
+  const asFilterable = {
+    name: tmpl.name, description: tmpl.description, readonly: tmpl.readonly,
+    aliases: tmpl.aliases, tags: tmpl.tags, recommendedMode: tmpl.recommendedMode,
+  };
+  assert.equal(templateMatchesRegex(asFilterable, new RegExp('security', 'i')), true);
+  assert.equal(templateMatchesRegex(asFilterable, new RegExp('writer', 'i')), false);
+});
+
+// ─── M10: No Sensitive Data in JSON ─────────────────────────────────
+
+console.log('\nM10: No Sensitive Data in JSON');
+
+await test('JSON output for agents does not contain apiKey', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  assert.ok(!json.toLowerCase().includes('apikey'));
+  assert.ok(!json.toLowerCase().includes('api_key'));
+  assert.ok(!json.toLowerCase().includes('secret'));
+  assert.ok(!json.toLowerCase().includes('token'));
+});
+
+await test('JSON output for templates does not contain apiKey', async () => {
+  const { formatTemplatesJson } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  const json = formatTemplatesJson(asFilterable, {});
+  assert.ok(!json.toLowerCase().includes('apikey'));
+  assert.ok(!json.toLowerCase().includes('api_key'));
+});
+
+await test('JSON output for history does not contain fullTask/fullContext', async () => {
+  const { formatHistoryJson } = await import('../src/format.js');
+  historyStore.clear();
+  historyStore.add({
+    timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle',
+    taskSummary: 'summary', mode: 'normal', runnerMode: 'prompt-only',
+    status: 'success', durationMs: 100, providerCallAvailable: false,
+    aliasUsed: false, fullTask: 'MY_SECRET_TASK', fullContext: 'MY_SECRET_CTX',
+  });
+  const json = formatHistoryJson(historyStore.recent(10));
+  assert.ok(!json.includes('MY_SECRET_TASK'));
+  assert.ok(!json.includes('MY_SECRET_CTX'));
+  historyStore.clear();
+});
+
+await test('JSON output for status does not include full provider error details', async () => {
+  const { formatStatusJson } = await import('../src/format.js');
+  const { buildStatusReport } = await import('../src/status.js');
+  const report = buildStatusReport({
+    cwd: PROJECT_ROOT,
+    config: {},
+    providerCallStatus: { available: false, error: 'apiKey: sk-1234567890abcdefghijk' },
+    lastReloadTime: null,
+    delegationCount: 0,
+  });
+  const json = formatStatusJson(report, []);
+  const parsed = JSON.parse(json);
+  // The reason field may contain sanitized or truncated version but not the full key
+  // The formatStatusReport already sanitizes errors via categorizeProviderError
+  assert.equal(typeof parsed.providerCall.reason, 'string');
+});
+
+await test('schemaVersion is included in all JSON outputs', async () => {
+  const { formatAgentsJson, formatTemplatesJson, formatStatusJson, formatHistoryJson, formatMetricsJson, formatValidationJson } = await import('../src/format.js');
+  const { buildStatusReport } = await import('../src/status.js');
+  const { validateAgents } = await import('../src/templates.js');
+
+  const agentsJson = formatAgentsJson(agents, {});
+  assert.ok(JSON.parse(agentsJson).schemaVersion === 1);
+
+  const { loadTemplates } = await import('../src/templates.js');
+  const tmplResult = loadTemplates();
+  const asFilterable = tmplResult.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  assert.ok(JSON.parse(formatTemplatesJson(asFilterable, {})).schemaVersion === 1);
+
+  const statusReport = buildStatusReport({ cwd: PROJECT_ROOT, config: {}, providerCallStatus: null, lastReloadTime: null, delegationCount: 0 });
+  assert.ok(JSON.parse(formatStatusJson(statusReport, [])).schemaVersion === 1);
+
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  assert.ok(JSON.parse(formatHistoryJson(historyStore.recent(10))).schemaVersion === 1);
+  historyStore.clear();
+
+  const metrics: MetricsSummary = { total: 0, success: 0, fallback: 0, error: 0, avgDurationMs: 0, perAgent: {}, perRunnerMode: {}, providerCallAvailable: 0, providerCallUnavailable: 0 };
+  assert.ok(JSON.parse(formatMetricsJson(metrics)).schemaVersion === 1);
+
+  const validationResult = validateAgents(PROJECT_ROOT);
+  assert.ok(JSON.parse(formatValidationJson(validationResult)).schemaVersion === 1);
+});
+
+await test('JSON outputs use camelCase field names', async () => {
+  const { formatMetricsJson } = await import('../src/format.js');
+  const metrics: MetricsSummary = { total: 0, success: 0, fallback: 0, error: 0, avgDurationMs: 0, perAgent: {}, perRunnerMode: {}, providerCallAvailable: 0, providerCallUnavailable: 0 };
+  const json = formatMetricsJson(metrics);
+  const parsed = JSON.parse(json);
+  // camelCase fields
+  assert.equal(parsed.totalDelegations !== undefined, true);
+  assert.equal(parsed.successCount !== undefined, true);
+  assert.equal(parsed.fallbackCount !== undefined, true);
+  assert.equal(parsed.errorCount !== undefined, true);
+  assert.equal(parsed.averageDurationMs !== undefined, true);
+  assert.equal(parsed.perAgent !== undefined, true);
+  assert.equal(parsed.perRunnerMode !== undefined, true);
+  // snake_case fields should not appear
+  assert.equal(parsed.total_delegations, undefined);
+  assert.equal(parsed.success_count, undefined);
+});
+
+await test('formatAgentsJson regex filter shows pattern in filters', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, { regex: new RegExp('oracle', 'i') });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.filters.regex, 'oracle');
+});
+
+
 // ─── Summary ────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);

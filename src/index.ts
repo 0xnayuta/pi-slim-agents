@@ -56,7 +56,18 @@ import {
   formatTemplatesList,
   formatValidationResult,
 } from './templates.js';
+import {
+  parseFormatOption,
+  parseRegexOption,
+  formatAgentsJson,
+  formatTemplatesJson,
+  formatStatusJson,
+  formatHistoryJson,
+  formatMetricsJson,
+  formatValidationJson,
+} from './format.js';
 import type { DelegateAgentParams, RunnerMode, SlimAgentsConfig } from './types.js';
+import * as fs from 'node:fs';
 
 // ─── Extension Factory ──────────────────────────────────────────────
 
@@ -85,7 +96,15 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   // ── Subcommand handlers ───────────────────────────────────────────
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  async function handleStatus(ctx: any) {
+  async function handleStatus(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
+    const { format, error: formatError } = parseFormatOption(flags);
+
+    if (formatError) {
+      ctx.ui.notify(`❌ ${formatError}`, 'error');
+      return;
+    }
+
     const report = buildStatusReport({
       cwd,
       config,
@@ -93,6 +112,15 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       lastReloadTime,
       delegationCount: historyStore.count(),
     });
+
+    if (format === 'json') {
+      const loadedPaths: string[] = [];
+      if (fs.existsSync(report.config.projectPath)) loadedPaths.push(report.config.projectPath);
+      if (fs.existsSync(report.config.userPath)) loadedPaths.push(report.config.userPath);
+      ctx.ui.notify(formatStatusJson(report, loadedPaths), 'info');
+      return;
+    }
+
     ctx.ui.notify(formatStatusReport(report), 'info');
   }
 
@@ -111,30 +139,36 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   async function handleHistory(args: string, ctx: any) {
     const { flags } = parseFlags(args);
-    const hasFilters = Object.keys(flags).length > 0;
+    const { format, error: formatError } = parseFormatOption(flags);
 
+    if (formatError) {
+      ctx.ui.notify(`❌ ${formatError}`, 'error');
+      return;
+    }
+
+    const filter: HistoryFilter = {};
+    if (flags.agent) filter.agent = flags.agent;
+    if (flags.status && ['success', 'fallback', 'error'].includes(flags.status)) {
+      filter.status = flags.status as 'success' | 'fallback' | 'error';
+    }
+    if (flags.runner && ['prompt-only', 'provider-call'].includes(flags.runner)) {
+      filter.runnerMode = flags.runner as RunnerMode;
+    }
+    if (flags.mode && ['quick', 'normal', 'deep'].includes(flags.mode)) {
+      filter.mode = flags.mode;
+    }
+    if (flags.limit) {
+      const limit = parseInt(flags.limit, 10);
+      if (!isNaN(limit) && limit > 0) filter.limit = limit;
+    }
+    if (flags.query) filter.query = flags.query;
+
+    const hasFilters = Object.keys(flags).some(k => k !== 'format');
     let records;
 
     if (!hasFilters) {
       records = historyStore.recent(10);
     } else {
-      const filter: HistoryFilter = {};
-      if (flags.agent) filter.agent = flags.agent;
-      if (flags.status && ['success', 'fallback', 'error'].includes(flags.status)) {
-        filter.status = flags.status as 'success' | 'fallback' | 'error';
-      }
-      if (flags.runner && ['prompt-only', 'provider-call'].includes(flags.runner)) {
-        filter.runnerMode = flags.runner as RunnerMode;
-      }
-      if (flags.mode && ['quick', 'normal', 'deep'].includes(flags.mode)) {
-        filter.mode = flags.mode;
-      }
-      if (flags.limit) {
-        const limit = parseInt(flags.limit, 10);
-        if (!isNaN(limit) && limit > 0) filter.limit = limit;
-      }
-      if (flags.query) filter.query = flags.query;
-
       records = historyStore.filter(filter);
     }
 
@@ -146,22 +180,54 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       return;
     }
 
+    if (format === 'json') {
+      ctx.ui.notify(formatHistoryJson(records, hasFilters ? filter : undefined), 'info');
+      return;
+    }
+
     ctx.ui.notify(formatHistoryTable(records), 'info');
   }
 
-  async function handleMetrics(ctx: any) {
+  async function handleMetrics(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
+    const { format, error: formatError } = parseFormatOption(flags);
+
+    if (formatError) {
+      ctx.ui.notify(`❌ ${formatError}`, 'error');
+      return;
+    }
+
     const metrics = historyStore.metrics();
+
+    if (format === 'json') {
+      ctx.ui.notify(formatMetricsJson(metrics), 'info');
+      return;
+    }
+
     ctx.ui.notify(formatMetrics(metrics), 'info');
   }
 
   async function handleList(args: string, ctx: any) {
     const { flags } = parseFlags(args);
-    const hasFilters = Object.keys(flags).length > 0;
+    const { format, error: formatError } = parseFormatOption(flags);
+
+    if (formatError) {
+      ctx.ui.notify(`❌ ${formatError}`, 'error');
+      return;
+    }
+
+    const { regex, error: regexError } = parseRegexOption(flags);
+    if (regexError) {
+      ctx.ui.notify(`❌ ${regexError}`, 'error');
+      return;
+    }
 
     const allAgents = loadAgents(cwd, config);
 
     // Build filter from flags
-    const filter: AgentFilter = {};
+    const filter: AgentFilter & { regex?: RegExp | null } = {
+      regex,
+    };
     if (flags.tag) {
       filter.tags = Array.isArray(flags.tag) ? flags.tag : [flags.tag];
     }
@@ -173,6 +239,14 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     if (flags.source) {
       const src = flags.source as 'builtin' | 'user' | 'project';
       if (['builtin', 'user', 'project'].includes(src)) filter.source = src;
+    }
+
+    const hasFilters = Object.keys(flags).some(k => k !== 'format');
+
+    if (format === 'json') {
+      const filtered = filterAgents(allAgents, filter);
+      ctx.ui.notify(formatAgentsJson(filtered, filter), 'info');
+      return;
     }
 
     if (hasFilters) {
@@ -238,6 +312,19 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   async function handleTemplates(args: string, ctx: any) {
     const { flags } = parseFlags(args);
+    const { format, error: formatError } = parseFormatOption(flags);
+
+    if (formatError) {
+      ctx.ui.notify(`❌ ${formatError}`, 'error');
+      return;
+    }
+
+    const { regex, error: regexError } = parseRegexOption(flags);
+    if (regexError) {
+      ctx.ui.notify(`❌ ${regexError}`, 'error');
+      return;
+    }
+
     const result = loadTemplates();
 
     if (!result.ok) {
@@ -251,7 +338,9 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     }
 
     // Build template filter from flags
-    const filter: TemplateFilter = {};
+    const filter: TemplateFilter & { regex?: RegExp | null } = {
+      regex,
+    };
     if (flags.tag) {
       filter.tags = Array.isArray(flags.tag) ? flags.tag : [flags.tag];
     }
@@ -259,17 +348,24 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     if (flags.readonly !== undefined) filter.readonly = true;
     if (flags.writable !== undefined) filter.writable = true;
 
-    const hasFilters = Object.keys(flags).length > 0;
+    const hasFilters = Object.keys(flags).some(k => k !== 'format');
+
+    const asFilterable: FilterableTemplate[] = result.templates.map(t => ({
+      name: t.name,
+      description: t.description,
+      readonly: t.readonly,
+      aliases: t.aliases,
+      tags: t.tags,
+      recommendedMode: t.recommendedMode,
+    }));
+
+    if (format === 'json') {
+      const filtered = filterTemplates(asFilterable, filter);
+      ctx.ui.notify(formatTemplatesJson(filtered, filter), 'info');
+      return;
+    }
 
     if (hasFilters) {
-      const asFilterable: FilterableTemplate[] = result.templates.map(t => ({
-        name: t.name,
-        description: t.description,
-        readonly: t.readonly,
-        aliases: t.aliases,
-        tags: t.tags,
-        recommendedMode: t.recommendedMode,
-      }));
       const filtered = filterTemplates(asFilterable, filter);
       const lines: string[] = ['# Agent Templates'];
       lines.push(`Filtered: ${filtered.length} of ${result.templates.length} templates`);
@@ -335,9 +431,23 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   // ── Validate handler ───────────────────────────────────────────────
 
-  async function handleValidate(ctx: any) {
+  async function handleValidate(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
+    const { format, error: formatError } = parseFormatOption(flags);
+
+    if (formatError) {
+      ctx.ui.notify(`❌ ${formatError}`, 'error');
+      return;
+    }
+
     config = loadConfig(cwd);
     const result = validateAgents(cwd);
+
+    if (format === 'json') {
+      ctx.ui.notify(formatValidationJson(result), 'info');
+      return;
+    }
+
     ctx.ui.notify(formatValidationResult(result), 'info');
   }
 
@@ -447,13 +557,13 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
       switch (firstWord) {
         case 'status':
-          return handleStatus(ctx);
+          return handleStatus(rawArgs.slice('status'.length), ctx);
         case 'reload':
           return handleReload(ctx);
         case 'history':
           return handleHistory(rawArgs.slice('history'.length), ctx);
         case 'metrics':
-          return handleMetrics(ctx);
+          return handleMetrics(rawArgs.slice('metrics'.length), ctx);
         case 'replay':
           return handleReplay(rawArgs.slice('replay'.length), ctx);
         case 'export-history':
@@ -463,7 +573,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         case 'create':
           return handleCreate(rawArgs.slice('create'.length), ctx);
         case 'validate':
-          return handleValidate(ctx);
+          return handleValidate(rawArgs.slice('validate'.length), ctx);
         default:
           ctx.ui.notify(
             `Unknown subcommand "${firstWord}". Available: ${KNOWN_SUBCOMMANDS.join(', ')}`,
@@ -477,7 +587,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   pi.registerCommand('agents-status', {
     description: 'Show slim-agents runtime status',
-    handler: async (_args, ctx) => handleStatus(ctx),
+    handler: async (args, ctx) => handleStatus(args ?? '', ctx),
   });
 
   pi.registerCommand('agents-reload', {
@@ -492,7 +602,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   pi.registerCommand('agents-metrics', {
     description: 'Show delegation metrics',
-    handler: async (_args, ctx) => handleMetrics(ctx),
+    handler: async (args, ctx) => handleMetrics(args ?? '', ctx),
   });
 
   pi.registerCommand('agents-replay', {
@@ -517,7 +627,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   pi.registerCommand('agents-validate', {
     description: 'Validate all agent files',
-    handler: async (_args, ctx) => handleValidate(ctx),
+    handler: async (args, ctx) => handleValidate(args ?? '', ctx),
   });
 
   // ── /agent shortcut command ─────────────────────────────────────

@@ -44,6 +44,8 @@ export interface AgentFilter {
   disabled?: boolean;
   /** Filter by source: builtin (package), user, project. */
   source?: 'builtin' | 'user' | 'project';
+  /** Compiled regex applied against name, description, aliases, tags. AND with other filters. */
+  regex?: RegExp | null;
 }
 
 export interface TemplateFilter {
@@ -55,6 +57,8 @@ export interface TemplateFilter {
   readonly?: boolean;
   /** Show only writable (non-readonly) templates. */
   writable?: boolean;
+  /** Compiled regex applied against name, description, aliases, tags. AND with other filters. */
+  regex?: RegExp | null;
 }
 
 // ─── Agent Filtering ────────────────────────────────────────────────
@@ -82,6 +86,17 @@ export function filterAgents(agents: AgentDefinition[], filter: AgentFilter): Ag
         ...agent.tags,
       ].join(' ').toLowerCase();
       if (!haystack.includes(q)) return false;
+    }
+
+    // Regex filter: match against name, description, aliases, tags
+    if (filter.regex) {
+      const searchable = [
+        agent.name,
+        agent.description,
+        ...agent.aliases,
+        ...agent.tags,
+      ].join(' ');
+      if (!filter.regex.test(searchable)) return false;
     }
 
     // readonly filter
@@ -153,6 +168,17 @@ export function filterTemplates(templates: FilterableTemplate[], filter: Templat
         ...tmpl.tags,
       ].join(' ').toLowerCase();
       if (!haystack.includes(q)) return false;
+    }
+
+    // Regex filter: match against name, description, aliases, tags
+    if (filter.regex) {
+      const searchable = [
+        tmpl.name,
+        tmpl.description,
+        ...tmpl.aliases,
+        ...tmpl.tags,
+      ].join(' ');
+      if (!filter.regex.test(searchable)) return false;
     }
 
     // readonly filter
