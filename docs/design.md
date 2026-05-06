@@ -1,17 +1,17 @@
-# Design Document — pi-slim-agents
+# 设计文档 — pi-slim-agents
 
-## Philosophy
+## 设计理念
 
-**pi-slim-agents** brings lightweight specialist agent roles to pi-mono, inspired by the multi-agent patterns in [oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim) but without the full orchestration framework.
+**pi-slim-agents** 为 pi-mono 带来轻量级的专家代理角色，灵感来自 [oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim) 中的多代理模式，但没有完整的编排框架。
 
-### Key Principles
+### 核心原则
 
-1. **Markdown-first**: Agents are defined as `.md` files with YAML frontmatter. No TypeScript required to create or customize agents.
-2. **Zero runtime overhead**: No background processes, no scheduling, no multiplexing. Agents are invoked on-demand via the `delegate_agent` tool.
-3. **Prompt-based delegation** (v1): The delegation prompt is returned to the main LLM, which adopts the specialist's role to complete the task. This is simple and effective.
-4. **Extensible**: Users can add custom agents at project or user level without modifying the package.
+1. **Markdown 优先**：代理以带有 YAML frontmatter 的 `.md` 文件定义。创建或自定义代理无需 TypeScript。
+2. **零运行时开销**：无后台进程、无调度、无复用。代理通过 `delegate_agent` 工具按需调用。
+3. **基于提示词的委派（v1）**：委派提示词返回给主 LLM，由其采用专家角色完成任务。这种方式简单且有效。
+4. **可扩展**：用户可以在项目级或用户级添加自定义代理，无需修改包。
 
-## Architecture
+## 架构
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -45,20 +45,20 @@
 └─────────────────────────────────────────────┘
 ```
 
-## Agent Loading Priority
+## 代理加载优先级
 
-Agents are discovered from three locations. For the same agent name, the highest-priority source wins:
+代理从三个位置发现。对于同名代理，优先级最高的来源获胜：
 
-1. **Project-level** — `.pi/slim-agents/agents/*.md` (team-shared customizations)
-2. **User-level** — `~/.pi/agent/slim-agents/agents/*.md` (personal customizations)
-3. **Package built-in** — `agents/*.md` (bundled with the npm package)
+1. **项目级** — `.pi/slim-agents/agents/*.md`（团队共享的自定义）
+2. **用户级** — `~/.pi/agent/slim-agents/agents/*.md`（个人自定义）
+3. **包内置** — `agents/*.md`（随 npm 包附带）
 
-## Configuration
+## 配置
 
-Configuration is loaded from two files, merged (project overrides user):
+配置从两个文件加载，合并时项目级覆盖用户级：
 
-- `~/.pi/agent/slim-agents.json` — User-level defaults
-- `.pi/slim-agents.json` — Project-level overrides
+- `~/.pi/agent/slim-agents.json` — 用户级默认值
+- `.pi/slim-agents.json` — 项目级覆盖
 
 ```json
 {
@@ -76,50 +76,50 @@ Configuration is loaded from two files, merged (project overrides user):
 }
 ```
 
-## Delegation Model
+## 委派模型
 
-### v1: Prompt-Based Delegation
+### v1：基于提示词的委派
 
-When `delegate_agent` is called:
-1. The runner loads the target agent's prompt
-2. Builds a structured delegation prompt with task, context, and files
-3. Returns the prompt as a tool result
-4. The main LLM reads the result and adopts the specialist role
+当 `delegate_agent` 被调用时：
+1. 运行器加载目标代理的提示词
+2. 构建包含任务、上下文和文件的结构化委派提示词
+3. 将提示词作为工具结果返回
+4. 主 LLM 读取结果并采用专家角色
 
-This is simple, works within the pi extension API, and produces good results because the main LLM is already capable.
+这种方式简单，在 pi 扩展 API 内运作良好，并且因为主 LLM 本身已经具备能力，所以能产生良好结果。
 
-### v2 (planned): Child Session Delegation
+### v2（计划中）：子会话委派（Child Session Delegation）
 
-When pi-mono exposes child session / provider call APIs:
-1. The runner creates an independent model call with the specialist's system prompt
-2. The specialist runs in its own context, not polluting the main session
-3. Results are streamed back and integrated
+当 pi-mono 暴露子会话 / 提供商调用 API 时：
+1. 运行器使用专家的系统提示词创建独立的模型调用
+2. 专家在自己的上下文中运行，不会污染主会话
+3. 结果流式返回并整合
 
-## Relationship to oh-my-opencode-slim
+## 与 oh-my-opencode-slim 的关系
 
-pi-slim-agents is **inspired by** but does **not copy** oh-my-opencode-slim. Key differences:
+pi-slim-agents **受** oh-my-opencode-slim **启发**但**不复制**。主要区别：
 
-| Aspect | oh-my-opencode-slim | pi-slim-agents |
-|--------|-------------------|----------------|
-| Platform | OpenCode plugin | pi-mono extension |
-| Agents | TypeScript-defined | Markdown + frontmatter |
-| Runtime | Full orchestration (scheduler, council, multiplexer) | Minimal prompt-based delegation |
-| Custom agents | Config-based overrides | File-based (project/user/package) |
-| Dependencies | OpenCode SDK | pi-coding-agent only |
+| 方面 | oh-my-opencode-slim | pi-slim-agents |
+|------|-------------------|----------------|
+| 平台 | OpenCode 插件 | pi-mono 扩展 |
+| 代理定义 | TypeScript 定义 | Markdown + frontmatter |
+| 运行时 | 完整编排（调度器、委员会、复用器） | 最小化基于提示词的委派 |
+| 自定义代理 | 基于配置覆盖 | 基于文件（项目/用户/包） |
+| 依赖 | OpenCode SDK | 仅 pi-coding-agent |
 
-## JSON Output & Machine-Readable Formats (M10)
+## JSON 输出与机器可读格式（M10）
 
-All commands that show data support `--format json` for scriptable, machine-readable output. JSON output:
+所有显示数据的命令都支持 `--format json`，提供脚本化的、机器可读的输出。JSON 输出：
 
-- Is always valid JSON (parseable by any JSON library)
-- Contains no Markdown formatting, ANSI codes, or API keys
-- Does not include full prompt bodies or agent results
-- Uses `schemaVersion` for forward-compatibility
-- Uses camelCase field names throughout
+- 始终是有效的 JSON（任何 JSON 库均可解析）
+- 不包含 Markdown 格式、ANSI 码或 API 密钥
+- 不包含完整提示词正文或代理结果
+- 使用 `schemaVersion` 实现前向兼容
+- 全部使用 camelCase 字段名
 
-### JSON Schema Design
+### JSON Schema 设计
 
-Each JSON output includes a top-level envelope:
+每个 JSON 输出包含顶层信封：
 
 ```json
 {
@@ -129,70 +129,70 @@ Each JSON output includes a top-level envelope:
 }
 ```
 
-| kind | Description |
-|------|-------------|
-| `agents` | Agent list with filters applied |
-| `templates` | Template list with filters applied |
-| `status` | Runtime status report |
-| `history` | Delegation history records |
-| `metrics` | Delegation metrics summary |
-| `validation` | Agent validation results |
-| `agentResult` | Delegation result from /agent command (success or error) |
-| `error` | Format/regex validation error response |
+| kind | 描述 |
+|------|------|
+| `agents` | 应用过滤后的代理列表 |
+| `templates` | 应用过滤后的模板列表 |
+| `status` | 运行时状态报告 |
+| `history` | 委派历史记录 |
+| `metrics` | 委派指标摘要 |
+| `validation` | 代理校验结果 |
+| `agentResult` | /agent 命令的委派结果（成功或错误） |
+| `error` | 格式/正则校验错误响应 |
 
-### schemaVersion Compatibility
+### schemaVersion 兼容性
 
-If the JSON schema changes in a future release, `schemaVersion` will be incremented. Consumers should check `schemaVersion` before parsing.
+如果 JSON schema 在未来版本中变更，`schemaVersion` 将递增。消费者应在解析前检查 `schemaVersion`。
 
-### Privacy in JSON Output
+### JSON 输出中的隐私保护
 
-- **No API keys** — Provider errors are sanitized before inclusion
-- **No full prompts** — Agent `body` field is never included in JSON
-- **No full results** — Provider-call outputs are not included
-- **No full task/context** — History JSON only includes `taskSummary` (truncated to 80 chars)
+- **无 API 密钥** — 提供商错误在包含前已清理
+- **无完整提示词** — 代理 `body` 字段永远不包含在 JSON 中
+- **无完整结果** — 提供商调用输出不包含在内
+- **无完整任务/上下文** — 历史记录 JSON 仅包含 `taskSummary`（截断为 80 字符）
 
-### Tags, Aliases, and JSON Output
+### 标签、别名与 JSON 输出
 
-Tags and aliases are included in JSON output as arrays. These fields enable:
+标签和别名以数组形式包含在 JSON 输出中。这些字段支持：
 
-- **Script filtering**: `jq '.items[] | select(.tags | contains("security"))'`
-- **External tooling**: Build dashboards from `/agents metrics --format json`
-- **CI integration**: Validate agent files via `/agents validate --format json`
+- **脚本过滤**：`jq '.items[] | select(.tags | contains("security"))'`
+- **外部工具**：从 `/agents metrics --format json` 构建仪表盘
+- **CI 集成**：通过 `/agents validate --format json` 校验代理文件
 
-### Regex Search Design
+### 正则搜索设计
 
-`--regex` provides advanced pattern matching for power users. It is **AND-combined** with other filters:
+`--regex` 为高级用户提供进阶的模式匹配。它与其他过滤条件**进行 AND 组合**：
 
 ```text
-/agents --regex "^cpp"               # matches name, description, aliases, tags
-/agents --tag review --regex "oracle" # must have 'review' tag AND match 'oracle'
+/agents --regex "^cpp"               # 匹配 name、description、aliases、tags
+/agents --tag review --regex "oracle" # 必须有 'review' 标签且匹配 'oracle'
 /agents templates --regex "writer|reviewer"
 ```
 
-Regex defaults to **case-insensitive** (`i` flag) for simplicity. Anchors (`^`, `$`) apply to the full searchable string, not individual fields.
+正则默认**不区分大小写**（`i` 标志）以简化使用。锚点（`^`、`$`）应用于完整可搜索字符串，而非单个字段。
 
-**Recommendation**: For simple searches, prefer `--query` (plain text, case-insensitive). Reserve `--regex` for complex patterns.
+**建议**：简单搜索优先使用 `--query`（纯文本，不区分大小写）。将 `--regex` 保留给复杂模式。
 
-### Tag Autocomplete Design Reservation (Future)
+### 标签自动补全设计预留（未来）
 
-Tag autocomplete is **not implemented** in this release. It requires pi-mono command completion API support. Design reservation:
+标签自动补全在本次版本中**未实现**。需要 pi-mono 命令补全 API 支持。设计预留：
 
-**Candidates** would come from:
-- Agent names (from loaded agents)
-- Agent aliases (from loaded agents)
-- Tags (aggregated from all agents/templates)
-- Template names
+**候选项**将来自：
+- 代理名称（来自已加载的代理）
+- 代理别名（来自已加载的代理）
+- 标签（从所有代理/模板聚合）
+- 模板名称
 
-**Implementation approach** (future):
-1. Aggregate all unique tags from `loadAgents()` + `loadTemplates()`
-2. Register a completion provider via pi-mono API
-3. On `--tag<Tab>`, return matching tags
+**实现方式**（未来）：
+1. 从 `loadAgents()` + `loadTemplates()` 聚合所有唯一标签
+2. 通过 pi-mono API 注册补全提供者
+3. 在 `--tag<Tab>` 时返回匹配的标签
 
-This is **out of scope for M10**.
+这**不在 M10 范围内**。
 
-### Token Usage Tracking Design Reservation (Future)
+### Token 用量追踪设计预留（未来）
 
-Real token usage tracking requires a working provider-call integration. Design reservation:
+实际的 Token 用量追踪需要可用的提供商调用集成。设计预留：
 
 ```json
 "tokenUsage": {
@@ -201,13 +201,13 @@ Real token usage tracking requires a working provider-call integration. Design r
 }
 ```
 
-When provider-call works, `tokenUsage` would be populated from pi-ai response metadata. Without real integration, it remains `available: false`.
+当提供商调用可工作时，`tokenUsage` 将从 pi-ai 响应元数据中填充。在没有真实集成的情况下，保持 `available: false`。
 
-**Out of scope**: Tokenizer dependencies, estimated token counts, cost tracking.
+**不在范围内**：分词器依赖、估计 Token 数、成本追踪。
 
-### Format Layer Architecture
+### 格式化层架构
 
-The formatter layer (`src/format.ts`) separates data generation from presentation:
+格式化器层（`src/format.ts`）将数据生成与展示分离：
 
 ```
 Command Handler
@@ -234,17 +234,17 @@ Command Handler
            ...
 ```
 
-This separation ensures:
-1. JSON formatters never produce Markdown
-2. Text formatters remain unchanged
-3. New output formats can be added without touching business logic
-4. Every formatter is independently testable
+这种分离确保：
+1. JSON 格式化器不会产生 Markdown
+2. 文本格式化器保持不变
+3. 可以添加新的输出格式而不触及业务逻辑
+4. 每个格式化器都可以独立测试
 
-## M11: Agent Result JSON / Metadata / JSON Polish
+## M11：代理结果 JSON / 元数据 / JSON 完善
 
-### agentResult JSON Kind
+### agentResult JSON kind
 
-`/agent --format json` returns a new `kind: agentResult` JSON response:
+`/agent --format json` 返回新的 `kind: agentResult` JSON 响应：
 
 ```json
 {
@@ -269,16 +269,16 @@ This separation ensures:
 }
 ```
 
-**Design decisions:**
-- `historyId` and `replayOf` are included so scripts can correlate delegation results with history
-- `providerCall.reason` describes why provider-call is unavailable or why it fell back
-- `output.format` distinguishes prompt-only (`text`) from provider-call (`provider-call`)
-- Error responses use `error.code` (e.g., `UNKNOWN_AGENT`, `AGENT_DISABLED`, `INVALID_MODE`)
-- `availableAgents` is included in `UNKNOWN_AGENT` errors for scripting convenience
+**设计决策：**
+- 包含 `historyId` 和 `replayOf` 以便脚本将委派结果与历史记录关联
+- `providerCall.reason` 描述提供商调用不可用或回退的原因
+- `output.format` 区分提示词-only（`text`）和提供商调用（`provider-call`）
+- 错误响应使用 `error.code`（如 `UNKNOWN_AGENT`、`AGENT_DISABLED`、`INVALID_MODE`）
+- `UNKNOWN_AGENT` 错误中包含 `availableAgents` 以方便脚本使用
 
-### error JSON Kind
+### error JSON kind
 
-Format/regex failures return `kind: error`:
+格式/正则失败返回 `kind: error`：
 
 ```json
 {
@@ -292,9 +292,9 @@ Format/regex failures return `kind: error`:
 }
 ```
 
-### Filter Serialization (null for unset)
+### 过滤器序列化（未设置时为 null）
 
-All filter objects use `null` for unset fields, not `undefined`:
+所有过滤器对象对未设置的字段使用 `null`，而非 `undefined`：
 
 ```json
 {
@@ -309,38 +309,38 @@ All filter objects use `null` for unset fields, not `undefined`:
 }
 ```
 
-This makes it safe for scripts to check `if (filters.tags !== null)` without type confusion.
+这使得脚本可以安全地检查 `if (filters.tags !== null)` 而不会有类型混淆。
 
-### Metadata Collection
+### 元数据收集
 
-File-level metadata is collected at load time via `fs.statSync`:
+文件级元数据在加载时通过 `fs.statSync` 收集：
 
 ```typescript
 interface FileMetadata {
-  sourcePath: string;    // Safe display path (relative or abbreviated, never absolute user paths)
+  sourcePath: string;    // 安全显示路径（相对或缩写，绝非绝对用户路径）
   sourcePathKind: 'builtin' | 'project' | 'user' | 'external' | 'unknown';
-  createdAt: string | null;  // ISO 8601 (may be null on Windows/older FS)
+  createdAt: string | null;  // ISO 8601（在 Windows/较旧文件系统上可能为 null）
   lastModified: string | null;  // ISO 8601
-  sizeBytes: number | null;  // bytes
+  sizeBytes: number | null;  // 字节
 }
 ```
 
-**Privacy-first design**: `sourcePath` is always a safe display path:
-- `builtin`: Relative to package root (e.g., `agents/oracle.md`)
-- `project`: Relative to project cwd (e.g., `.pi/slim-agents/agents/foo.md`)
-- `user`: Home directory abbreviated (e.g., `~/.pi/agent/...`)
-- `external`: Just the filename (e.g., `foo.md`)
-- `unknown`: Cannot determine path origin (fallback)
+**隐私优先设计**：`sourcePath` 始终是安全的显示路径：
+- `builtin`：相对于包根目录（如 `agents/oracle.md`）
+- `project`：相对于项目 cwd（如 `.pi/slim-agents/agents/foo.md`）
+- `user`：家目录缩写（如 `~/.pi/agent/...`）
+- `external`：仅文件名（如 `foo.md`）
+- `unknown`：无法确定路径来源（回退）
 
-**Non-fatal design**: Stat failures log a warning and return null metadata fields. The extension never crashes due to metadata collection — agents/templates are still loaded.
+**非致命设计**：stat 失败时记录警告并返回 null 元数据字段。扩展绝不会因元数据收集而崩溃 — 代理/模板仍然正常加载。
 
-**birthtime caveat**: `createdAt` uses `fs.statSync().birthtime`. On Windows and some filesystems, `birthtime` may equal `mtime` for recently created files or may be earlier than 2000 (epoch fallback). The collector filters out dates before Jan 1, 2000 as invalid.
+**birthtime 注意事项**：`createdAt` 使用 `fs.statSync().birthtime`。在 Windows 和某些文件系统上，`birthtime` 可能等于最近创建文件的 `mtime`，或者可能早于 2000 年（纪元回退）。收集器会过滤掉 2000 年 1 月 1 日之前的日期作为无效日期。
 
-### API Key Sanitization
+### API 密钥清理
 
-`formatAgentResultJson` runs output through `sanitizeJsonText()` before serialization:
+`formatAgentResultJson` 在序列化前通过 `sanitizeJsonText()` 处理输出：
 - `apiKey=sk-...` → `apiKey=[redacted]`
 - `sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` → `[API_KEY_REDACTED]`
 - `Bearer <token>` → `Bearer [TOKEN_REDACTED]`
 
-This prevents accidental API key leakage in JSON output even if the delegation prompt or result contains key-like strings.
+这防止了即使委派提示词或结果包含类密钥字符串，API 密钥也不会意外泄露到 JSON 输出中。

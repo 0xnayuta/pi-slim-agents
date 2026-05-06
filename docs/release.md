@@ -1,60 +1,60 @@
-# Release Guide
+# 发布指南
 
-This document covers the release process for pi-slim-agents.
+本文档介绍 pi-slim-agents 的发布流程。
 
-## Pre-release Checklist
+## 发布前检查清单
 
-Before publishing to npm, run through this checklist:
+在发布到 npm 之前，请按照此检查清单逐项检查：
 
-### 1. Clean git status
+### 1. 清理 git 状态
 
 ```bash
 git status
 ```
 
-Make sure:
-- No uncommitted changes (or intentionally staged)
-- No local history files committed (`.pi/slim-agents/history.jsonl`)
-- No sensitive data in working tree
+确认：
+- 无未提交的更改（或已暂存的预期更改）
+- 无本地历史文件已提交（`.pi/slim-agents/history.jsonl`）
+- 工作区中无敏感数据
 
-### 2. Run full release check
+### 2. 运行完整的发布检查
 
 ```bash
 pnpm release:check
 ```
 
-This runs:
-1. `pnpm typecheck` — TypeScript type checking
-2. `pnpm build` — Compile TypeScript to dist/
-3. `pnpm test:agents` — Unit tests (362 tests)
-4. `pnpm test:prompts` — Prompt eval static checks (7 checks)
-5. `pnpm check:package` — Package contents verification (13 checks)
-6. `pnpm pack:dry` — Dry-run npm pack
+这将依次运行：
+1. `pnpm typecheck` — TypeScript 类型检查
+2. `pnpm build` — 编译 TypeScript 到 dist/
+3. `pnpm test:agents` — 单元测试（362 个测试）
+4. `pnpm test:prompts` — 提示词评估静态检查（7 项检查）
+5. `pnpm check:package` — 包内容验证（13 项检查）
+6. `pnpm pack:dry` — npm pack 试运行
 
-### 3. Verify npm login
+### 3. 验证 npm 登录
 
 ```bash
 npm whoami
 ```
 
-Must be logged in as `@0xnayuta`.
+必须以 `@0xnayuta` 身份登录。
 
-### 4. Check package contents (dry-run)
+### 4. 检查包内容（试运行）
 
 ```bash
 pnpm pack:dry
 ```
 
-Verify these are included:
-- `dist/` — compiled TypeScript
-- `agents/` — 6 built-in agent files
-- `templates/` — 7 template files
-- `skills/` — skill definitions
-- `docs/` — documentation
-- `examples/prompt-evals/` — eval examples
-- `README.md`, `LICENSE`, `CHANGELOG.md`, `package.json`
+确认以下内容已包含：
+- `dist/` — 编译后的 TypeScript
+- `agents/` — 6 个内置代理文件
+- `templates/` — 7 个模板文件
+- `skills/` — 技能定义
+- `docs/` — 文档
+- `examples/prompt-evals/` — 评估示例
+- `README.md`、`LICENSE`、`CHANGELOG.md`、`package.json`
 
-Verify these are excluded:
+确认以下内容已排除：
 - `tests/`
 - `src/`
 - `.github/`
@@ -62,27 +62,27 @@ Verify these are excluded:
 - `history.jsonl`
 - `.env`
 
-### 5. Review CHANGELOG.md
+### 5. 审查 CHANGELOG.md
 
-Make sure:
-- All M13 changes are documented
-- Version is set to release date (`[0.1.0] - YYYY-MM-DD`)
-- No future features documented as past tense
+确认：
+- 所有 M13 变更已记录
+- 版本已设为发布日期（`[0.1.0] - YYYY-MM-DD`）
+- 没有将未来功能记录为已完成
 
-### 5. Verify dist/ contents
+### 6. 验证 dist/ 内容
 
 ```bash
 ls dist/
 ```
 
-Should contain:
-- `index.js` (main entry)
-- `index.d.ts` (type declarations)
-- All `.js` and `.d.ts` files for each source module
+应包含：
+- `index.js`（主入口）
+- `index.d.ts`（类型声明）
+- 所有源模块的 `.js` 和 `.d.ts` 文件
 
-## Version Update
+## 版本更新
 
-### Update version in package.json
+### 更新 package.json 中的版本
 
 ```json
 {
@@ -90,73 +90,73 @@ Should contain:
 }
 ```
 
-### Update CHANGELOG.md
+### 更新 CHANGELOG.md
 
-Change from:
+从：
 ```markdown
 ## [0.1.0] - Unreleased
 ```
 
-To:
+改为：
 ```markdown
 ## [0.1.0] - 2026-05-06
 ```
 
-Add a release date.
+添加发布日期。
 
-## Publishing
+## 发布
 
-### npm login verification
+### npm 登录验证
 
 ```bash
 npm whoami
 ```
 
-If not logged in:
+如果未登录：
 ```bash
 npm login
 ```
 
-### Publish to npm
+### 发布到 npm
 
-For scoped packages, you must set access level:
+对于作用域包，必须设置访问级别：
 
 ```bash
 npm publish --access public
 ```
 
-This publishes to:
+这将发布到：
 - https://www.npmjs.com/package/@0xnayuta/pi-slim-agents
 
-### Verify publication
+### 验证发布
 
 ```bash
 npm view @0xnayuta/pi-slim-agents
 ```
 
-Should show:
-- Package name
-- Latest version
-- Description
-- Repository URL
+应显示：
+- 包名
+- 最新版本
+- 描述
+- 仓库 URL
 
-## Post-release Verification
+## 发布后验证
 
-### Install from npm
+### 从 npm 安装
 
 ```bash
 pi install npm:@0xnayuta/pi-slim-agents
 ```
 
-### Test basic functionality
+### 测试基本功能
 
 ```text
 /agents
 ```
 
-Should show 6 built-in agents.
+应显示 6 个内置代理。
 
-### Smoke test commands
+### 冒烟测试命令
 
 ```text
 /agent explorer find where agents are loaded
@@ -167,23 +167,23 @@ Should show 6 built-in agents.
 /agents metrics
 ```
 
-### Test delegation
+### 测试委派
 
 ```text
 /agent oracle review this design
 ```
 
-Should show delegation result (prompt-only mode).
+应显示委派结果（提示词-only 模式）。
 
-### Validate agents
+### 校验代理
 
 ```text
 /agents validate
 ```
 
-Should pass all validation checks.
+应通过所有校验检查。
 
-### JSON output test
+### JSON 输出测试
 
 ```text
 /agents --format json
@@ -191,50 +191,50 @@ Should pass all validation checks.
 /agents status --format json
 ```
 
-## GitHub Release
+## GitHub 发布
 
-### Create git tag
+### 创建 git 标签
 
 ```bash
 git tag v0.1.0
 ```
 
-### Push tag to remote
+### 推送标签到远程
 
 ```bash
 git push origin v0.1.0
 ```
 
-### Create GitHub Release
+### 创建 GitHub 发布
 
-1. Go to https://github.com/0xnayuta/pi-slim-agents/releases/new
-2. Select the `v0.1.0` tag
-3. Title: `v0.1.0`
-4. Copy CHANGELOG.md content for this version
+1. 前往 https://github.com/0xnayuta/pi-slim-agents/releases/new
+2. 选择 `v0.1.0` 标签
+3. 标题：`v0.1.0`
+4. 复制 CHANGELOG.md 中此版本的内容
 
-### Release notes template
+### 发布说明模板
 
 ```markdown
 ## What's Changed
 
-<!-- Copy from CHANGELOG.md [0.1.0] section -->
+<!-- 从 CHANGELOG.md [0.1.0] 部分复制 -->
 
 ## v0.1.0 Supported Features
 
-- 6 built-in slim agents: explorer, librarian, oracle, fixer, designer, orchestrator
-- `/agent` shortcut with `--mode` flag (quick, normal, deep)
-- Agent aliases (search→explorer, arch→oracle, etc.)
-- 7 templates: security-reviewer, test-writer, doc-generator, refactor-planner, bug-triager, release-checker, cpp-reviewer
-- Tags, filters, regex, query search
-- JSON output for all commands
-- History, metrics, replay
-- Enable/disable configuration
-- Persistent history (optional)
+- 6 个内置轻量代理：explorer、librarian、oracle、fixer、designer、orchestrator
+- `/agent` 快捷命令，带 `--mode` 标志（quick、normal、deep）
+- 代理别名（search→explorer、arch→oracle 等）
+- 7 个模板：security-reviewer、test-writer、doc-generator、refactor-planner、bug-triager、release-checker、cpp-reviewer
+- 标签、过滤器、正则、查询搜索
+- 所有命令支持 JSON 输出
+- 历史记录、指标、重放
+- 启用/禁用配置
+- 持久化历史记录（可选）
 
 ## ⚠️ Known Limitations
 
-- Provider-call is **architectural only** — falls back to prompt-only
-- Real model calls pending pi-mono ExtensionAPI
+- 提供商调用（Provider-call）**仅为架构设计** — 回退为提示词-only
+- 实际模型调用等待 pi-mono ExtensionAPI
 
 ## Installation
 
@@ -245,88 +245,88 @@ pi install npm:@0xnayuta/pi-slim-agents
 **Full Changelog**: https://github.com/0xnayuta/pi-slim-agents/compare/v0.0.1...v0.1.0
 ```
 
-## Rollback / Hotfix
+## 回滚 / 热修复
 
-### If something goes wrong
+### 如果出现问题
 
-1. Do NOT delete the npm release (npm does not allow unpublishing immediately)
+1. 不要删除 npm 发布（npm 不允许立即取消发布）
 
-2. If critical bug: publish a patch version
+2. 如果是严重 bug：发布补丁版本
 
 ```bash
-# Fix the bug
+# 修复 bug
 git checkout -b fix/<issue>
 
-# Update version to patch
-# Edit package.json: "version": "0.1.1"
+# 更新版本为补丁版本
+# 编辑 package.json: "version": "0.1.1"
 
-# Update CHANGELOG.md
+# 更新 CHANGELOG.md
 git add CHANGELOG.md package.json
 git commit -m "fix: <description>"
 
-# Publish
+# 发布
 npm publish --access public
 ```
 
-3. Document the issue in CHANGELOG.md
+3. 在 CHANGELOG.md 中记录问题
 
-### If npm publish failed
+### 如果 npm 发布失败
 
-Check error message:
-- `E403` — Not authorized, check npm login
-- `E409` — Version already exists, increment version
-- `E401` — Authentication failed, run `npm login` again
+检查错误消息：
+- `E403` — 未授权，检查 npm 登录
+- `E409` — 版本已存在，递增版本号
+- `E401` — 认证失败，重新运行 `npm login`
 
-## Important Notes
+## 重要注意事项
 
-### Do NOT
+### 不要
 
-- Publish API keys or secrets in npm package
-- Commit local history (`.pi/slim-agents/history.jsonl`)
-- Publish in-development features marked as stable
-- Mark provider-call as stable (it's still fallback-only)
-- Publish from dirty git state (uncommitted changes)
+- 在 npm 包中发布 API 密钥或密钥
+- 提交本地历史记录（`.pi/slim-agents/history.jsonl`）
+- 将开发中标记为稳定的功能发布
+- 将提供商调用标记为稳定（它仍然仅作为回退）
+- 在 git 状态不干净时发布（有未提交的更改）
 
-### Do
+### 要
 
-- Keep prompt-only as the stable default
-- Document provider-call limitations clearly
-- Use semver correctly (major.minor.patch)
-- Update CHANGELOG.md before each release
-- Test locally before publishing
+- 保持提示词-only 作为稳定的默认值
+- 清楚记录提供商调用的限制
+- 正确使用 semver（major.minor.patch）
+- 每次发布前更新 CHANGELOG.md
+- 发布前在本地测试
 
 ## CI/CD
 
-This project uses GitHub Actions for CI. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+本项目使用 GitHub Actions 进行 CI。参见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
-CI runs on:
-- Every push to main/master
-- Every pull request to main/master
+CI 在以下情况下运行：
+- 每次推送到 main/master
+- 每次到 main/master 的拉取请求
 
-CI configuration:
-- **Node.js**: 24 (GitHub Actions runtime)
-- **pnpm**: 10.32.0 (pinned via `pnpm/action-setup@v4` `version` and `package.json` `packageManager`)
-- **pnpm caching**: Manual pnpm store caching via `actions/cache@v4`
-- **Lockfile**: `--no-frozen-lockfile` for CI (allows lockfile updates in PRs)
+CI 配置：
+- **Node.js**：24（GitHub Actions 运行时）
+- **pnpm**：10.32.0（通过 `pnpm/action-setup@v4` 的 `version` 和 `package.json` 的 `packageManager` 锁定）
+- **pnpm 缓存**：通过 `actions/cache@v4` 手动缓存 pnpm store
+- **Lockfile**：CI 中使用 `--no-frozen-lockfile`（允许 PR 中更新 lockfile）
 
-### pnpm version requirement
+### pnpm 版本要求
 
-This project requires **pnpm >= 10.26.0** because `pnpm pack --dry-run` was introduced in pnpm 10.26.0.
+本项目要求 **pnpm >= 10.26.0**，因为 `pnpm pack --dry-run` 在 pnpm 10.26.0 中引入。
 
-The recommended pnpm version is **10.32.0**, matching `package.json` `packageManager` field.
+推荐的 pnpm 版本是 **10.32.0**，与 `package.json` 的 `packageManager` 字段匹配。
 
-CI prints `pnpm --version` during setup to verify the correct version is used.
+CI 在设置期间打印 `pnpm --version` 以验证使用了正确的版本。
 
-CI steps:
-1. Setup Node.js 24
-2. Enable corepack
-3. Setup pnpm (no auto-install)
-4. Get and cache pnpm store path
-5. Install dependencies
-6. TypeScript type check
-7. Build
-8. Run tests (agents + prompts)
-9. Check package contents
-10. Dry-run pack (`pnpm pack --dry-run`)
+CI 步骤：
+1. 设置 Node.js 24
+2. 启用 corepack
+3. 设置 pnpm（不自动安装）
+4. 获取并缓存 pnpm store 路径
+5. 安装依赖
+6. TypeScript 类型检查
+7. 构建
+8. 运行测试（agents + prompts）
+9. 检查包内容
+10. 试运行打包（`pnpm pack --dry-run`）
 
-CI does NOT publish to npm automatically. Manual publish is required.
+CI 不会自动发布到 npm。需要手动发布。

@@ -1,5 +1,7 @@
 # pi-slim-agents
 
+**English** | [中文](README.zh.md)
+
 Lightweight specialist agents for [pi-mono](https://github.com/mariozechner/pi-coding-agent) without heavy subagent orchestration.
 
 ## Status

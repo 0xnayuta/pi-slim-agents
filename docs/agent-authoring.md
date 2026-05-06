@@ -1,12 +1,12 @@
-# Agent Authoring Guide
+# 代理创作指南
 
-This guide explains how to create and customize agents for pi-slim-agents.
+本指南介绍如何为 pi-slim-agents 创建和自定义代理。
 
-## Quick Start
+## 快速入门
 
-### Using Templates (Recommended)
+### 使用模板（推荐）
 
-Templates provide ready-made specialist roles you can adapt for your project:
+模板提供即用的专家角色，可以适配你的项目：
 
 ```text
 /agents templates
@@ -14,20 +14,20 @@ Templates provide ready-made specialist roles you can adapt for your project:
 /agents reload
 ```
 
-Then use `/agents validate` to check for issues.
+然后使用 `/agents validate` 检查问题。
 
-### Manual Creation
+### 手动创建
 
-Create a markdown file in one of these locations:
+在以下位置之一创建 Markdown 文件：
 
-- **Project-level**: `.pi/slim-agents/agents/my-agent.md`
-- **User-level**: `~/.pi/agent/slim-agents/agents/my-agent.md`
+- **项目级**：`.pi/slim-agents/agents/my-agent.md`
+- **用户级**：`~/.pi/agent/slim-agents/agents/my-agent.md`
 
-The filename (without `.md`) becomes the agent name.
+文件名（去掉 `.md`）即为代理名称。
 
-## File Format
+## 文件格式
 
-Agent files use markdown with YAML frontmatter:
+代理文件使用带有 YAML frontmatter 的 Markdown：
 
 ```markdown
 ---
@@ -55,35 +55,35 @@ You are My Agent — a specialist in [domain].
 - [What the agent should NOT do]
 ```
 
-## Frontmatter Fields
+## Frontmatter 字段
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | No* | Agent identifier. Defaults to filename. |
-| `description` | string | Yes | Short description shown in `/agents` list. |
-| `role` | string | No | Role hint for the orchestrator. |
-| `temperature` | number | No | LLM temperature (0-2). Default: 0.2. Valid range: 0.0 to 2.0. |
-| `readonly` | boolean | No | If true, agent cannot modify files. Default: false |
-| `tags` | string[] | No | Tags for search and filtering. See [Tags](#tags-design) below. |
-| `order` | number | No | Display order (lower = higher priority). Default: 100 |
-| `aliases` | string[] | No | Alternative names for this agent. |
-| `recommendedMode` | string | No | Recommended delegation mode: `quick`, `normal`, or `deep`. Default: `normal` |
+| 字段 | 类型 | 必需 | 描述 |
+|------|------|------|------|
+| `name` | string | 否* | 代理标识符。默认为文件名。 |
+| `description` | string | 是 | 在 `/agents` 列表中显示的简短描述。 |
+| `role` | string | 否 | 面向编排器的角色提示。 |
+| `temperature` | number | 否 | LLM 温度（0-2）。默认值：0.2。有效范围：0.0 到 2.0。 |
+| `readonly` | boolean | 否 | 如果为 true，代理不能修改文件。默认值：false |
+| `tags` | string[] | 否 | 用于搜索和过滤的标签。参见下方[标签](#标签设计)。 |
+| `order` | number | 否 | 显示顺序（数值越小优先级越高）。默认值：100 |
+| `aliases` | string[] | 否 | 代理的替代名称。 |
+| `recommendedMode` | string | 否 | 推荐的委派模式：`quick`、`normal` 或 `deep`。默认值：`normal` |
 
-*The filename takes precedence over the `name` field.
+*文件名优先于 `name` 字段。
 
-## Prompt Writing Guidelines
+## 提示词编写指南
 
-### Structure Your Prompt
+### 组织你的提示词
 
-1. **Identity**: "You are [Name] — [role description]."
-2. **Role**: What the agent does and when to use it.
-3. **Behavior**: How the agent should act, what tools to use.
-4. **Output Format**: Expected response structure.
-5. **Constraints**: What the agent should NOT do.
+1. **身份**："You are [Name] — [role description]."
+2. **角色**：代理做什么以及何时使用。
+3. **行为**：代理应如何行动，使用什么工具。
+4. **输出格式**：预期的响应结构。
+5. **约束**：代理不应该做什么。
 
-### Be Specific
+### 要具体
 
-Clear, detailed prompts produce better results:
+清晰、详细的提示词产生更好的结果：
 
 ```markdown
 **Role**: Review code for security risks — input validation, auth bypass, sensitive data exposure.
@@ -94,9 +94,9 @@ Clear, detailed prompts produce better results:
 - Do NOT run automated scanners unless asked
 ```
 
-### Define Boundaries
+### 定义边界
 
-Tell agents what NOT to do:
+告诉代理不应该做什么：
 
 ```markdown
 **Constraints**:
@@ -105,7 +105,7 @@ Tell agents what NOT to do:
 - Do NOT claim to have made changes you didn't
 ```
 
-### Example: Minimal Custom Agent
+### 示例：最简自定义代理
 
 ```markdown
 ---
@@ -146,9 +146,9 @@ Overall assessment
 - Be constructive, not critical
 ```
 
-### Example: C++ Reviewer Agent
+### 示例：C++ 代码审查代理
 
-For C/C++ projects, pair with `pi-lsp` for clangd diagnostics:
+对于 C/C++ 项目，配合 `pi-lsp` 获取 clangd 诊断：
 
 ```markdown
 ---
@@ -191,11 +191,11 @@ Overall assessment
 - Do NOT run compiler builds unless asked
 ```
 
-## Tags Design
+## 标签设计
 
-Tags are metadata labels for search and filtering. They are **not used for delegation** — agents are still called by name or alias.
+标签是用于搜索和过滤的元数据标签。它们**不用于委派** — 代理仍然通过名称或别名调用。
 
-### Fields
+### 字段
 
 ```yaml
 tags:
@@ -204,15 +204,15 @@ tags:
   - readonly
 ```
 
-### Rules
+### 规则
 
-1. **All lowercase** — tags must use only lowercase letters, numbers, hyphens (`-`), and underscores (`_`)
-2. **Non-empty** — empty strings are not allowed
-3. **No duplicates** — duplicate tags produce a validation warning
-4. **Recommended ≤ 8** — more than 8 tags produces a warning
-5. **Missing tags** — agents without any tags produce a validation warning
+1. **全部小写** — 标签必须仅使用小写字母、数字、连字符（`-`）和下划线（`_`）
+2. **非空** — 不允许空字符串
+3. **无重复** — 重复的标签会产生校验警告
+4. **建议 ≤ 8 个** — 超过 8 个标签会产生警告
+5. **缺少标签** — 没有任何标签的代理会产生校验警告
 
-Valid examples:
+有效示例：
 
 ```yaml
 tags:
@@ -222,78 +222,78 @@ tags:
   - readonly
 ```
 
-Invalid examples:
+无效示例：
 
 ```yaml
-# ❌ Contains spaces — invalid
+# ❌ 包含空格 — 无效
 tags:
   - "code review"
 
-# ❌ Uppercase — invalid
+# ❌ 大写 — 无效
 tags:
   - Review
 
-# ❌ Empty tag — invalid
+# ❌ 空标签 — 无效
 tags:
   - review
   - ""
 ```
 
-### Common Tags
+### 常用标签
 
-| Tag | Meaning |
-|-----|---------|
-| `readonly` | Agent advises, does not modify files |
-| `writable` | Agent can modify files (use instead of negating `readonly`) |
-| `review` | Agent performs code/design review |
-| `docs` | Agent works with documentation |
-| `security` | Agent specializes in security concerns |
-| `test` | Agent works with tests |
-| `cpp` | Agent specializes in C/C++ |
-| `ui` | Agent works with UI/UX |
-| `planning` | Agent does planning or analysis |
-| `debug` | Agent specializes in debugging |
-| `meta` | Agent handles routing or orchestration |
-| `codebase` | Agent searches the local codebase |
-| `research` | Agent does external research |
+| 标签 | 含义 |
+|------|------|
+| `readonly` | 代理提供咨询，不修改文件 |
+| `writable` | 代理可以修改文件（使用此标签而非否定 `readonly`） |
+| `review` | 代理执行代码/设计审查 |
+| `docs` | 代理处理文档工作 |
+| `security` | 代理专注于安全相关 |
+| `test` | 代理处理测试工作 |
+| `cpp` | 代理专注于 C/C++ |
+| `ui` | 代理处理 UI/UX 工作 |
+| `planning` | 代理进行规划或分析 |
+| `debug` | 代理专注于调试 |
+| `meta` | 代理处理路由或编排 |
+| `codebase` | 代理搜索本地代码库 |
+| `research` | 代理进行外部调研 |
 
-### Tags vs Aliases
+### 标签与别名
 
-| | Alias | Tag |
-|--|-------|-----|
-| Used for | Calling the agent (`/agent search`) | Filtering agents (`/agents --tag docs`) |
-| Format | Lowercase alphanumeric + hyphen/underscore | Same |
-| Required | No | No (but recommended) |
-| Max recommended | Unlimited | ≤ 8 |
-| Example | `search`, `find` | `codebase`, `readonly`, `docs` |
+| | 别名（Alias） | 标签（Tag） |
+|--|---------------|-------------|
+| 用途 | 调用代理（`/agent search`） | 过滤代理（`/agents --tag docs`） |
+| 格式 | 小写字母数字 + 连字符/下划线 | 同上 |
+| 必需 | 否 | 否（但建议添加） |
+| 推荐上限 | 无限制 | ≤ 8 |
+| 示例 | `search`、`find` | `codebase`、`readonly`、`docs` |
 
-### When NOT to Add Tags
+### 何时不要添加标签
 
-Don’t add tags for:
-- Every keyword related to the agent (tags are not a full-text index)
-- Vague concepts that match most agents (e.g., `helpful`)
-- Tags that duplicate the agent name (e.g., an agent named `oracle` doesn’t need a tag `oracle`)
+不要为以下情况添加标签：
+- 与代理相关的每个关键词（标签不是全文索引）
+- 匹配大多数代理的模糊概念（如 `helpful`）
+- 与代理名称重复的标签（如名为 `oracle` 的代理不需要标签 `oracle`）
 
-Good: `security`, `review`, `readonly` for a security reviewer
-Bad: `security`, `sec`, `security-reviewer`, `sec-reviewer` (redundant)
+好的示例：安全审查代理使用 `security`、`review`、`readonly`
+不好的示例：`security`、`sec`、`security-reviewer`、`sec-reviewer`（冗余）
 
-### Validation
+### 校验
 
-Run `/agents validate` to check your tags:
+运行 `/agents validate` 检查你的标签：
 
 ```text
 /agents validate
 ```
 
-Checks:
-- Each tag is valid (lowercase, alphanumeric, hyphen, underscore)
-- No duplicate tags
-- At least one tag present (warning)
-- No more than 8 tags (warning)
+检查项：
+- 每个标签是否有效（小写字母、数字、连字符、下划线）
+- 无重复标签
+- 至少有一个标签（警告）
+- 不超过 8 个标签（警告）
 
-## Alias Design Rules
+## 别名设计规则
 
-Aliases let users call agents by alternative names:
+别名让用户可以通过替代名称调用代理：
 
 ```markdown
 aliases:
@@ -302,23 +302,23 @@ aliases:
   - locate
 ```
 
-Rules:
-- Only lowercase letters, numbers, hyphens, underscores
-- Must be unique across ALL agents (built-in + custom)
-- Cannot match another agent's name
-- Shorter is better: `fix` beats `fix-it-now`
+规则：
+- 仅限小写字母、数字、连字符、下划线
+- 在所有代理中必须唯一（内置 + 自定义）
+- 不能与其他代理的名称匹配
+- 越短越好：`fix` 优于 `fix-it-now`
 
-Common patterns:
-- `search`, `find`, `locate` → explorer
-- `docs`, `research`, `library` → librarian
-- `arch`, `review`, `judge` → oracle
-- `fix`, `implement`, `patch` → fixer
+常见模式：
+- `search`、`find`、`locate` → explorer
+- `docs`、`research`、`library` → librarian
+- `arch`、`review`、`judge` → oracle
+- `fix`、`implement`、`patch` → fixer
 
-## readonly=false Guidelines
+## readonly=false 指南
 
-Agents with `readonly: false` can modify files. Write prompts that:
+`readonly: false` 的代理可以修改文件。编写提示词时应：
 
-1. **Clearly state when modification is authorized**
+1. **明确说明何时授权修改**
 
 ```markdown
 **Constraints**:
@@ -326,7 +326,7 @@ Agents with `readonly: false` can modify files. Write prompts that:
 - Do NOT claim to have modified files if you only proposed changes
 ```
 
-2. **Define the scope of changes**
+2. **定义修改范围**
 
 ```markdown
 **Scope**:
@@ -335,45 +335,45 @@ Agents with `readonly: false` can modify files. Write prompts that:
 - Do NOT make architectural changes without user confirmation
 ```
 
-## Validation
+## 校验
 
-Run `/agents validate` to check your agents for issues:
+运行 `/agents validate` 检查你的代理是否有问题：
 
 ```text
 /agents validate
 ```
 
-Checks:
-- Frontmatter parsing errors
-- Missing required fields (description)
-- Empty prompt body
-- Invalid alias names
-- Alias conflicts with other agents
-- **Tags validity** — each tag must be lowercase alphanumeric with hyphens/underscores
-- **Tags duplicates** — duplicate tags produce a warning
-- **Tags presence** — agents without any tags produce a warning
-- **Tags count** — more than 8 tags produces a warning
-- readonly=false without modification boundaries
+检查项：
+- Frontmatter 解析错误
+- 缺少必需字段（description）
+- 空的提示词正文
+- 无效的别名名称
+- 别名与其他代理冲突
+- **标签有效性** — 每个标签必须为小写字母数字加连字符/下划线
+- **标签重复** — 重复的标签会产生警告
+- **标签存在性** — 没有任何标签的代理会产生警告
+- **标签数量** — 超过 8 个标签会产生警告
+- readonly=false 但没有修改边界约束
 
-## Common Errors
+## 常见错误
 
-### Alias Conflict
+### 别名冲突
 
 ```
 ❌ Alias "arch" of agent "my-agent" conflicts with alias of agent "oracle"
 ```
 
-**Fix**: Choose a different alias or remove the conflicting one.
+**修复**：选择一个不同的别名或删除冲突的别名。
 
-### Invalid Agent Name
+### 无效的代理名称
 
-Agent names must be lowercase letters, numbers, hyphens, and underscores only.
+代理名称必须仅包含小写字母、数字、连字符和下划线。
 
-**Fix**: Rename the file from `My Agent.md` to `my-agent.md`.
+**修复**：将文件从 `My Agent.md` 重命名为 `my-agent.md`。
 
-### Empty Prompt Body
+### 空的提示词正文
 
-**Fix**: Add content after the frontmatter `---`:
+**修复**：在 frontmatter 的 `---` 之后添加内容：
 
 ```markdown
 ---
@@ -384,31 +384,31 @@ description: My agent
 You are My Agent — a specialist in [domain].
 ```
 
-### readonly=false Without Boundary
+### readonly=false 但没有边界约束
 
-Agents that can modify files should clearly state when modification is authorized.
+可以修改文件的代理应明确说明何时授权修改。
 
-**Fix**: Add constraint text like:
+**修复**：添加约束文本，如：
 ```markdown
 **Constraints**:
 - ONLY modify files when explicitly authorized by the user
 - Do NOT claim to have modified files if you only proposed changes
 ```
 
-### Role Too Vague
+### 角色过于模糊
 
-"Your agent should be good at everything" doesn't help the delegation prompt.
+"你的代理应该擅长一切"对委派提示词没有帮助。
 
-**Fix**: Focus on a narrow domain:
-- ✅ "Code reviewer specializing in security vulnerabilities"
-- ❌ "General helpful assistant"
+**修复**：聚焦于一个狭窄的领域：
+- ✅ "专注于安全漏洞的代码审查员"
+- ❌ "通用的有帮助的助手"
 
-## Overriding Built-in Agents
+## 覆盖内置代理
 
-To customize a built-in agent, create a file with the same name in a higher-priority location:
+要自定义内置代理，在更高优先级的位置创建同名文件：
 
 ```bash
-# Override the oracle agent for this project
+# 为此项目覆盖 oracle 代理
 cat > .pi/slim-agents/agents/oracle.md << 'EOF'
 ---
 description: Security-focused architecture advisor
@@ -421,7 +421,7 @@ You are Oracle — a security-focused architecture advisor.
 EOF
 ```
 
-You can also use config overrides:
+你也可以使用配置覆盖：
 
 ```json
 // .pi/slim-agents.json
@@ -436,9 +436,9 @@ You can also use config overrides:
 }
 ```
 
-## Disabling Agents
+## 禁用代理
 
-Disable agents via config:
+通过配置禁用代理：
 
 ```json
 {
@@ -450,7 +450,7 @@ Disable agents via config:
 }
 ```
 
-Or globally:
+或全局禁用：
 
 ```json
 {
@@ -458,18 +458,18 @@ Or globally:
 }
 ```
 
-## Best Practices
+## 最佳实践
 
-1. **Be specific**: Clear, detailed prompts produce better results.
-2. **Define constraints**: Tell agents what NOT to do, not just what to do.
-3. **Set temperature**: Lower (0.1) for consistent tasks, higher (0.3) for creative ones.
-4. **Use readonly**: Mark advisory agents as readonly to prevent accidental modifications.
-5. **Keep prompts short**: Agents receive delegation context; detailed instructions belong in the prompt.
-6. **Narrow职责**: A specialist in "SQL query optimization" beats a "database expert".
+1. **要具体**：清晰、详细的提示词产生更好的结果。
+2. **定义约束**：告诉代理不应该做什么，而不仅仅是应该做什么。
+3. **设置温度**：一致性任务用较低值（0.1），创造性任务用较高值（0.3）。
+4. **使用 readonly**：将咨询类代理标记为 readonly 以防止意外修改。
+5. **保持提示词精简**：代理会收到委派上下文；详细指令应放在提示词中。
+6. **缩小职责范围**：专注于 "SQL 查询优化"的专家胜过"数据库专家"。
 
-## Integration with pi-lsp
+## 与 pi-lsp 的集成
 
-For C/C++ projects, the `cpp-reviewer` template mentions using `lsp_diagnostics` from pi-lsp:
+对于 C/C++ 项目，`cpp-reviewer` 模板提到使用 pi-lsp 的 `lsp_diagnostics`：
 
 ```markdown
 **Behavior**:
@@ -477,30 +477,29 @@ For C/C++ projects, the `cpp-reviewer` template mentions using `lsp_diagnostics`
 - Reference clangd diagnostics alongside your analysis
 ```
 
-This lets the agent combine static analysis (your review) with real-time compiler diagnostics.
+这让代理可以将静态分析（你的审查）与实时编译器诊断相结合。
 
-## Templates Reference
+## 模板参考
 
-| Template | readonly | Best For |
-|----------|----------|----------|
-| security-reviewer | yes | Input validation, auth, dependency risks |
-| test-writer | no | Test plans, test cases |
-| doc-generator | no | README, API docs, changelogs |
-| refactor-planner | yes | Cleanup plans |
-| bug-triager | yes | Bug source narrowing |
-| release-checker | yes | Version bumps, dry-runs |
-| cpp-reviewer | yes | C/C++ memory safety, CMake |
+| 模板 | readonly | 适用场景 |
+|------|----------|----------|
+| security-reviewer | yes | 输入验证、认证、依赖风险 |
+| test-writer | no | 测试计划、测试用例 |
+| doc-generator | no | README、API 文档、变更日志 |
+| refactor-planner | yes | 清理计划 |
+| bug-triager | yes | Bug 来源缩小 |
+| release-checker | yes | 版本升级、试运行 |
+| cpp-reviewer | yes | C/C++ 内存安全、CMake |
 
-See `/agents templates` for the full list with descriptions.
+运行 `/agents templates` 查看完整的带描述列表。
 
-### Template Name Convention
+### 模板命名约定
 
-Template file names may end with `-template` (e.g., `security-reviewer.md` or `security-reviewer-template.md`). 
-The `-template` suffix is automatically stripped from the template name for display purposes.
+模板文件名可以以 `-template` 结尾（如 `security-reviewer.md` 或 `security-reviewer-template.md`）。
+`-template` 后缀在显示时会自动剥离。
 
-For example:
-- A file named `security-reviewer.md` becomes template `security-reviewer`
-- A file named `cpp-reviewer-template.md` also becomes template `cpp-reviewer`
+例如：
+- 名为 `security-reviewer.md` 的文件变为模板 `security-reviewer`
+- 名为 `cpp-reviewer-template.md` 的文件也变为模板 `cpp-reviewer`
 
-The frontmatter `name` field in the template file is used as-is (without stripping), but if the filename 
-has a `-template` suffix, it is also stripped from the frontmatter name to match the expected convention.
+模板文件中的 frontmatter `name` 字段按原样使用（不剥离），但如果文件名有 `-template` 后缀，frontmatter 的 name 中的 `-template` 后缀也会被剥离以匹配预期约定。

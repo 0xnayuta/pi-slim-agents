@@ -1,208 +1,208 @@
-# Prompt Tuning Guide
+# 提示词调优指南
 
-This document covers the principles and process for fine-tuning built-in agent prompts based on real-world usage feedback.
+本文档介绍基于真实使用反馈微调内置代理提示词的原则和流程。
 
-## Prompt Quality Checklist
+## 提示词质量检查清单（Prompt Quality Checklist）
 
-Use this checklist when creating or updating agent prompts:
+创建或更新代理提示词时使用此 checklist：
 
-- [ ] **Does the agent have a narrow role?**
-  - Can you describe the agent's purpose in one sentence?
-  - Is the scope clearly bounded (e.g., "find code", "review security", "implement small fixes")?
-  - Does it avoid generic helpfulness (e.g., "can do anything")?
+- [ ] **代理是否有狭窄的职责范围（narrow role）？**
+  - 你能否用一句话描述代理的目的？
+  - 范围是否明确界定（如“查找代码”、“审查安全”、“实现小修复”）？
+  - 是否避免（avoid）了泛化的有用性（如“什么都能做”）？
 
-- [ ] **Does it clearly say what NOT to do?**
-  - Is there a Constraints or Boundaries section?
-  - Does it explicitly state read-only vs. writable behavior?
-  - Does it warn against common failure modes for this agent?
+- [ ] **是否明确说明了不应该做什么（what NOT to do）？**
+  - 是否有约束（Constraints）或边界（Boundaries）部分？
+  - 是否明确声明了只读 vs 可写行为？
+  - 是否警告了该代理常见的失败模式？
 
-- [ ] **Does it avoid claiming tool actions it cannot perform?**
-  - Does a read-only agent explicitly say it won't modify files?
-  - Does a writable agent clarify when modification is authorized?
-  - Does it avoid phrases like "I will fix this" in prompt-only mode?
+- [ ] **是否避免（avoid）了声称执行无法完成的工具操作？**
+  - 只读代理是否明确说明不会修改文件？
+  - 可写代理是否说明了何时授权修改？
+  - 在提示词-only 模式下是否避免了诸如“I will fix this”之类的措辞？
 
-- [ ] **Does it prefer evidence over speculation?**
-  - Does it require `path:line` references for findings?
-  - Does it ask for sources when citing documentation?
-  - Does it warn when evidence is thin?
+- [ ] **是否优先使用证据（evidence）而非推测？**
+  - 是否要求发现结果附带 `path:line` 引用？
+  - 引用文档时是否要求提供来源？
+  - 证据不足时是否发出警告？
 
-- [ ] **Does it produce bounded output?**
-  - Is there a max output size or line count constraint?
-  - Does the output format specify what to include and exclude?
-  - Does it avoid open-ended analysis?
+- [ ] **是否产生有界的（bounded）输出？**
+  - 是否有最大输出大小或行数约束？
+  - 输出格式是否指定了要包含和排除的内容？
+  - 是否避免了开放式分析？
 
-- [ ] **Does it avoid duplicating another agent's role?**
-  - Is the boundary with similar agents clear?
-  - Does it explain when to use this agent vs. another?
-  - Does it avoid scope creep into other agents' domains?
+- [ ] **是否避免了与其他代理职责重复（duplicate）？**
+  - 与类似代理的边界是否清晰？
+  - 是否说明了何时使用此代理 vs 另一个代理？
+  - 是否避免了范围蔓延到其他代理的领域？
 
-- [ ] **Does it work with quick / normal / deep modes?**
-  - Is the behavior appropriate for all three modes?
-  - Does quick mode stay brief?
-  - Does deep mode add analysis without becoming verbose?
+- [ ] **是否适用于 quick / normal / deep 模式（modes）？**
+  - 行为是否适合所有三种模式？
+  - quick 模式是否保持简短（short）？
+  - deep 模式是否在不变得冗长的情况下增加了分析？
 
-- [ ] **Does it remain short enough to avoid context bloat?**
-  - Is it under 500 words?
-  - Are there redundant phrases that can be cut?
-  - Is the output format concise?
+- [ ] **是否足够精简（short）以避免上下文膨胀？**
+  - 是否在 500 词以内？
+  - 是否有可以删减的冗余短语？
+  - 输出格式是否简洁？
 
-## Common Failure Modes by Agent
-
-### explorer
-- Finds no results but invents file paths instead of saying "no matches found"
-- Becomes an architecture reviewer — suggests design changes instead of finding code
-- Returns too many files (50+) without filtering or prioritizing
-- Omits line numbers and relies on descriptions instead of evidence
-- Makes architectural judgments beyond code location
-
-### librarian
-- Fabricates documentation sources or APIs that don't exist
-- Doesn't distinguish between official documentation and community tutorials
-- Provides outdated recommendations without noting uncertainty
-- Gives full tutorials when user only needed a quick reference
-- Suggests libraries without checking if they're in the project's dependencies
-
-### oracle
-- Over-engineers — proposes complex abstractions for simple problems
-- Fails to give a clear verdict — says "it depends" without recommendation
-- Provides abstract advice that can't be executed (e.g., "improve the architecture")
-- Outputs too much content (>500 words) for quick questions
-- Cites specific files/lines incorrectly — critiques code it didn't read
-
-### fixer
-- Expands scope beyond the requested fix
-- Claims to have modified files in prompt-only mode (should propose changes only)
-- Introduces new dependencies without authorization
-- Rewrites entire functions instead of making minimal targeted changes
-- Fails to read existing code before making edits
-
-### designer
-- Provides abstract advice like "make it more beautiful" without specifics
-- Gives implementation details (React components, CSS) when only design review was requested
-- Ignores the project's existing design system or style
-- Proposes complete redesigns instead of targeted improvements
-- Doesn't provide actionable guidance on layout, hierarchy, or interaction
-
-### orchestrator
-- Over-delegates — sends simple tasks to specialists when main agent can handle them
-- Delegates to the wrong agent (e.g., oracle for file search)
-- Provides vague delegation tasks that won't get useful results
-- Attempts to solve all problems itself instead of routing to specialists
-- Misses opportunities for parallel delegation of independent tasks
-
-## Agent Roles and Expected Behavior
+## 每个代理的常见失败模式
 
 ### explorer
+- 未找到结果但编造文件路径,而非说"未找到匹配项"
+- 变成架构审查员 - 建议设计变更而非查找代码
+- 返回过多文件(50+)而不进行过滤或优先级排序
+- 省略行号,依赖描述而非证据
+- 超出代码定位的范围做出架构判断
 
-**Role**: Fast codebase search and pattern matching specialist.
+### librarian
+- 捏造不存在的文档来源或 API
+- 未区分官方文档和社区教程
+- 提供过时的建议而未注明不确定性
+- 用户只需要快速参考时却给出完整教程
+- 建议库时未检查是否在项目的依赖中
 
-**Expected strengths**:
-- Returns precise `path:line` references
-- Parallel searches for efficiency
-- Quick turnaround on "where is X?" queries
+### oracle
+- 过度设计 - 为简单问题提出复杂的抽象
+- 未能给出明确的结论 - 说"取决于情况"而无推荐
+- 提供无法执行的抽象建议(如"改进架构")
+- 对快速问题输出过多内容(>500 词)
+- 错误引用特定文件/行 - 评论未读过的代码
 
-**What to watch**:
-- Are file paths and line numbers stable across runs?
-- Is the agent returning too many false positives on broad searches?
-- Is the agent skipping relevant files (e.g., hidden dirs, non-standard extensions)?
-- Is the agent making architectural judgments beyond code location?
+### fixer
+- 扩大范围超出请求的修复
+- 在提示词-only 模式下声称已修改文件(应该只建议修改)
+- 未经许可引入新依赖
+- 重写整个函数而非进行最小化的针对性修改
+- 编辑前未读取现有代码
+
+### designer
+- 提供"让它更美观"之类的抽象建议而无具体方案
+- 仅请求设计审查时给出实现细节(React 组件、CSS)
+- 忽略项目现有的设计系统或样式
+- 提出完全重新设计而非针对性改进
+- 未在布局、层次或交互方面提供可操作的指导
+
+### orchestrator
+- 过度委派 - 将简单任务发送给专家,而主代理可以处理
+- 委派给错误的代理(如用 oracle 做文件搜索)
+- 提供模糊的委派任务,无法获得有用结果
+- 试图自己解决所有问题,而非路由给专家
+- 错过独立任务并行委派的机会
+
+## 代理角色与预期行为
+
+### explorer
+
+**角色**:快速代码库搜索和模式匹配专家。
+
+**预期优势**:
+- 返回精确的 `path:line` 引用
+- 并行搜索以提高效率
+- 对"X 在哪里?"查询快速响应
+
+**需关注**:
+- 文件路径和行号在多次运行间是否稳定?
+- 广泛搜索时是否返回过多误报?
+- 是否跳过了相关文件(如隐藏目录、非标准扩展名)?
+- 是否超出了代码定位的范围做出架构判断?
 
 ### librarian
 
-**Role**: Documentation and library research specialist.
+**角色**:文档和库调研专家。
 
-**Expected strengths**:
-- Cites authoritative sources (official docs, RFCs, source code)
-- Distinguishes official vs community patterns
-- Provides evidence-based recommendations
+**预期优势**:
+- 引用权威来源(官方文档、RFC、源代码)
+- 区分官方 vs 社区模式
+- 提供基于证据的建议
 
-**What to watch**:
-- Is the agent distinguishing between official documentation and community experience?
-- Are citations pointing to the correct library version?
-- Is the agent surfacing outdated docs without a warning?
-- Is the agent fabricating APIs or documentation?
+**需关注**:
+- 是否区分了官方文档和社区经验?
+- 引用是否指向正确的库版本?
+- 是否在未警告的情况下引出了过时的文档?
+- 是否在捏造 API 或文档?
 
 ### oracle
 
-**Role**: Strategic technical advisor, code reviewer, and architecture consultant.
+**角色**:战略技术顾问、代码审查员和架构顾问。
 
-**Expected strengths**:
-- Concise, actionable recommendations
-- Trade-off analysis with clear reasoning
-- Identifies over-engineering (YAGNI violations)
+**预期优势**:
+- 简洁、可操作的建议
+- 带清晰推理的权衡分析
+- 识别过度设计(违反 YAGNI)
 
-**What to watch**:
-- Is the oracle too verbose or overly formal?
-- Is it proposing complex abstractions without clear benefit?
-- Does it acknowledge uncertainty when evidence is thin?
-- Does it cite specific files/lines when reviewing code?
-- Is it giving a clear verdict or hedging without recommendation?
+**需关注**:
+- oracle 是否过于冗长或过于正式?
+- 是否在没有明显收益的情况下提出复杂抽象?
+- 证据不足时是否承认不确定性?
+- 审查代码时是否引用特定文件/行?
+- 是否给出明确结论还是回避推荐?
 
 ### fixer
 
-**Role**: Fast, focused implementation specialist for bounded code changes.
+**角色**:快速、聚焦的实现专家,用于有界的代码变更。
 
-**Expected strengths**:
-- Executes within the provided scope
-- Reads files before editing
-- Reports changes clearly
+**预期优势**:
+- 在提供的范围内执行
+- 编辑前读取文件
+- 清晰报告变更
 
-**What to watch**:
-- Does the agent expand scope beyond what was requested?
-- Does it claim to have modified files it didn't actually touch?
-- Is it failing to read existing code before making changes?
-- Is it introducing new dependencies without authorization?
+**需关注**:
+- 代理是否扩大了请求的范围?
+- 是否声称修改了实际未触及的文件?
+- 是否在修改前未读取现有代码?
+- 是否未经许可引入新依赖?
 
 ### designer
 
-**Role**: Frontend UI/UX specialist for intentional, polished visual experiences.
+**角色**:前端 UI/UX 专家,打造有意图的、精致的视觉体验。
 
-**Expected strengths**:
-- Distinctive, characterful design suggestions
-- Specific implementation guidance (class names, properties)
-- Matches aesthetic to the project's existing style
+**预期优势**:
+- 独特的、有特色的设计建议
+- 具体的实现指导(类名、属性)
+- 审美与项目现有风格匹配
 
-**What to watch**:
-- Are the design suggestions actually executable (not just aspirational)?
-- Does the agent respect the project's existing design system when present?
-- Is it giving Tailwind utility guidance that actually exists in the project?
-- Does it provide actionable guidance, or just abstract advice?
+**需关注**:
+- 设计建议是否真的可执行(而非仅仅是愿景)?
+- 代理在有设计系统时是否尊重项目现有的设计系统?
+- 是否给出了项目中实际存在的 Tailwind 工具类指导?
+- 是否提供可操作的指导,还是只有抽象建议?
 
 ### orchestrator
 
-**Role**: AI task orchestrator that decomposes work and delegates to specialist agents.
+**角色**:AI 任务编排器,分解工作并委派给专家代理。
 
-**Expected strengths**:
-- Correct routing of subtasks to appropriate specialists
-- Parallel delegation when appropriate
-- Clean integration of results
+**预期优势**:
+- 正确地将子任务路由到合适的专家
+- 在适当时进行并行委派
+- 干净地整合结果
 
-**What to watch**:
-- Is it delegating too much (overhead) or too little (missed specialist value)?
-- Is it sequencing dependent tasks correctly?
-- Is it acknowledging uncertainty in routing decisions?
-- Is it handling simple tasks directly instead of delegating?
+**需关注**:
+- 是否过度委派(开销过大)或委派不足(错过专家价值)?
+- 是否正确地排序依赖任务?
+- 是否在路由决策中承认不确定性?
+- 是否直接处理简单任务而非委派?
 
-## Prompt Tuning Principles
+## 提示词调优原则
 
-### 1. Make Small, Targeted Changes
+### 1. 进行小的、针对性的更改
 
-Don't rewrite entire prompts. Change one thing at a time:
+不要重写整个提示词。一次更改一个方面:
 
-- ✅ Add one constraint phrase
-- ✅ Adjust the output format
-- ✅ Add one example
+- ✅ 添加一个约束短语
+- ✅ 调整输出格式
+- ✅ 添加一个示例
 
-Bad:
-- ❌ Rewrite the entire prompt because it "feels off"
+不好的做法:
+- ❌ 因为"感觉不对"而重写整个提示词
 
-### 2. One Agent at a Time
+### 2. 一次只更改一个代理
 
-Only change one agent's prompt per iteration. This makes it clear which change caused which behavioral difference.
+每次迭代只更改一个代理的提示词。这样可以清楚地知道哪个更改导致了哪个行为差异。
 
-### 3. Define "Good" Before Changing
+### 3. 更改前先定义"好"
 
-Establish a concrete example of good output before editing the prompt:
+在编辑提示词之前,建立一个具体的好输出示例:
 
 ```text
 Good output from @oracle for "is this over-engineered?":
@@ -211,58 +211,58 @@ Good output from @oracle for "is this over-engineered?":
 - Trade-off acknowledged
 ```
 
-Then test whether the prompt produces outputs like this.
+然后测试提示词是否产生了类似这样的输出。
 
-### 4. Avoid Prompt Bloat
+### 4. 避免提示词膨胀
 
-Every sentence you add is a sentence the model may follow literally. Add constraints sparingly:
+你添加的每一句话都是模型可能会逐字遵循的句子。谨慎地添加约束:
 
-- ✅ "Be concise — prefer 3 bullet points over 10"
+- ✅ "Be concise - prefer 3 bullet points over 10"
 - ❌ "Be concise but thorough but also specific but also brief"
 
-### 5. Keep Examples Short
+### 5. 保持示例简短
 
-If using examples, use 1-2 well-chosen examples, not a full conversation.
+如果使用示例,使用 1-2 个精选示例,而非完整的对话。
 
-### 6. Use the Eval Cases
+### 6. 使用评估用例
 
-Reference `examples/prompt-evals/` when tuning prompts:
+调优提示词时参考 `examples/prompt-evals/`:
 
-- Each eval case defines expected output characteristics
-- Good and bad output examples guide constraint language
-- Failure modes inform boundary warnings
+- 每个评估用例定义预期的输出特征
+- 好和坏的输出示例指导约束语言
+- 失败模式指导边界警告
 
-## Prompt Eval Examples
+## 提示词评估示例
 
-The `examples/prompt-evals/` directory contains human-readable eval cases for each agent and template. These are:
+`examples/prompt-evals/` 目录包含每个代理和模板的人类可读评估用例。这些:
 
-- **Not automated benchmarks** — they're spec sheets for human review
-- **Reference for prompt tuning** — use them to verify behavior after changes
-- **Documentation of failure modes** — common anti-patterns to avoid
+- **不是自动化基准测试** - 它们是供人类审查的规格说明
+- **用于提示词调优的参考** - 用它们验证更改后的行为
+- **失败模式的文档** - 要避免的常见反模式
 
-Run static checks:
+运行静态检查:
 
 ```bash
 pnpm test:prompts
 ```
 
-## How to Override Built-in Prompts
+## 如何覆盖内置提示词
 
-See [agent-authoring.md](agent-authoring.md) for the full guide. Quick version:
+完整的指南参见 [agent-authoring.md](agent-authoring.md)。快速版本:
 
-**Via project-level agent file** (overrides built-in by same name):
+**通过项目级代理文件**(按同名覆盖内置代理):
 
 ```bash
 cat > .pi/slim-agents/agents/oracle.md << 'EOF'
 ---
 description: Your customized oracle description
 ---
-You are Oracle — your custom role description here.
+You are Oracle - your custom role description here.
 ...
 EOF
 ```
 
-**Via config override** (partial customization):
+**通过配置覆盖**(部分自定义):
 
 ```json
 // .pi/slim-agents.json

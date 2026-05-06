@@ -1,197 +1,197 @@
-# Next Actions
+# 下一步行动
 
-Current task board for pi-slim-agents development.
+pi-slim-agents 开发的当前任务看板。
 
-## Now
+## 当前
 
-These are the immediate priorities during dogfood / pre-publish stabilization:
+这些是自用验证（dogfood）/ 发布前稳定化期间的最优先事项：
 
-### Verify D1-fix in devpiano
+### 在 devpiano 中验证 D1-fix
 
-- [ ] Confirm no "require is not defined" errors on pi startup
-- [ ] Verify `/agents status` shows correct agent counts
-- [ ] Check that metadata (createdAt, lastModified, sizeBytes) loads correctly
-- [ ] Run in devpiano: `cd G:/path/to/devpiano && pnpm dev`
+- [ ] 确认 pi 启动时无 "require is not defined" 错误
+- [ ] 验证 `/agents status` 显示正确的代理数量
+- [ ] 检查元数据（createdAt、lastModified、sizeBytes）是否正确加载
+- [ ] 在 devpiano 中运行：`cd G:/path/to/devpiano && pnpm dev`
 
-### Continue devpiano dogfood
+### 继续 devpiano 自用验证
 
-- [ ] Use two-step pattern with real development tasks
-- [ ] Test `/agent explorer find X` + ask main agent to search
-- [ ] Test direct search pattern as alternative
-- [ ] Compare both patterns for quality/completeness
+- [ ] 在实际开发任务中使用两步模式
+- [ ] 测试 `/agent explorer find X` + 让主代理执行搜索
+- [ ] 测试直接搜索模式作为替代方案
+- [ ] 比较两种模式的质量/完整性
 
-### Record dogfood feedback
+### 记录自用验证反馈
 
-- [ ] Document prompt quality issues
-- [ ] Note runner behavior problems
-- [ ] Flag UX clarity gaps
-- [ ] Track which patterns work best
+- [ ] 记录提示词质量问题
+- [ ] 记录运行器行为问题
+- [ ] 标记用户体验清晰度不足之处
+- [ ] 跟踪哪种模式效果最好
 
-### Improve prompt-only UX if needed
+### 根据需要改进提示词-only 用户体验
 
-- [ ] Review dogfood feedback for UX improvements
-- [ ] Consider additional help text or examples
-- [ ] Update docs/dogfood.md if patterns change
-
----
-
-## Next
-
-These are the next priorities after dogfood validates core functionality:
-
-### Add R5 deferred tests
-
-These tests were identified in R5 but deferred for post-0.1.0:
-
-- [ ] **Unicode/Chinese input tests** — test agent behavior with non-ASCII task text
-- [ ] **Repeated flag tests** — test `/agent --mode deep --mode quick` edge case
-- [ ] **--flag-like text in task parsing** — document limitation (quote task text)
-- [ ] **outputTemplate=false integration test** — verify plain output rendering
-- [ ] **Concurrent history append tests** — test race conditions with persistent history
-
-### Provider-call feasibility spike
-
-- [ ] Monitor pi-mono ExtensionAPI releases for model calling support
-- [ ] Test `@mariozechner/pi-ai` importability when pi-mono updates
-- [ ] Update `/agents status` to reflect new availability
-- [ ] Mark provider-call as "stable" when verified working
-
-### Child-session runner feasibility spike
-
-- [ ] Investigate pi-mono child session API (if available)
-- [ ] Design independent model call architecture
-- [ ] Test isolated specialist context
-- [ ] Implement streaming results if API supports it
+- [ ] 审查自用验证反馈以改进用户体验
+- [ ] 考虑添加额外的帮助文本或示例
+- [ ] 如果模式变更，更新 docs/dogfood.md
 
 ---
 
-## Later
+## 接下来
 
-These are planned for future milestones:
+这些是自用验证核心功能后的下一步优先事项：
 
-### npm publish
+### 补充 R5 推迟的测试
 
-- [ ] Resolve npm account auth issue (2FA/token)
-- [ ] Update CHANGELOG.md with release date
-- [ ] Update README.md status to "v0.1.0"
-- [ ] Run `npm publish --access public`
-- [ ] Verify on npmjs.com
-- [ ] Create GitHub release with tag
+这些测试在 R5 中识别但推迟到 v0.1.0 之后：
 
-### Token usage tracking
+- [ ] **Unicode/中文输入测试** — 测试代理在非 ASCII 任务文本下的行为
+- [ ] **重复标志测试** — 测试 `/agent --mode deep --mode quick` 边界情况
+- [ ] **任务解析中的类标志文本** — 记录限制（引号包裹任务文本）
+- [ ] **outputTemplate=false 集成测试** — 验证纯文本输出渲染
+- [ ] **并发历史记录追加测试** — 测试持久化历史记录的竞态条件
 
-- [ ] Requires real provider-call integration
-- [ ] Collect usage data from model responses
-- [ ] Expose via `/agents metrics` or dedicated command
-- [ ] Design privacy-safe output format
+### 提供商调用可行性探索
 
-### Agent composition design
+- [ ] 监控 pi-mono ExtensionAPI 发布，关注模型调用支持
+- [ ] 测试 pi-mono 更新后 `@mariozechner/pi-ai` 是否可导入
+- [ ] 更新 `/agents status` 以反映新的可用性
+- [ ] 验证可工作后将提供商调用标记为"稳定"
 
-- [ ] Only if real need appears in dogfood
-- [ ] Agent A can call agent B (dependency resolution)
-- [ ] Design composition/pipeline patterns
-- [ ] Document in design doc if implemented
+### 子会话运行器可行性探索
 
----
-
-## Deferred
-
-These features are planned but not scheduled:
-
-### Token usage tracking
-
-**Status:** Deferred (requires real provider-call)
-
-**Rationale:** Cannot track usage without model call integration.
-
-### Streaming
-
-**Status:** Deferred (not in scope for v0.1.0)
-
-**Rationale:** Requires real provider-call integration.
-
-### Scheduler / cron
-
-**Status:** Deferred (not in scope for v0.1.0)
-
-**Rationale:** pi-slim-agents is request-response, not persistent.
-
-### Worktree isolation
-
-**Status:** Deferred (not in scope for v0.1.0)
-
-**Rationale:** Adds complexity without clear benefit for v0.1.0.
-
-### MCP integration
-
-**Status:** Deferred (not in scope for v0.1.0)
-
-**Rationale:** MCP ecosystem not stabilized yet.
-
-### Tag autocomplete in `/agent`
-
-**Status:** Deferred (requires pi-mono completion API)
-
-**Rationale:** Not critical for core functionality.
-
-### README table of contents
-
-**Status:** Deferred (nice to have)
-
-**Rationale:** README is long but functional without TOC.
-
-### docs/ navigation index
-
-**Status:** Deferred (nice to have)
-
-**Rationale:** Can be added post-release.
+- [ ] 调研 pi-mono 子会话 API（如果可用）
+- [ ] 设计独立的模型调用架构
+- [ ] 测试隔离的专家上下文
+- [ ] 如果 API 支持，实现流式结果
 
 ---
 
-## Completed
+## 后续
 
-These actions have been completed:
+这些计划用于未来的里程碑：
 
-### R0-R7 audit
+### npm 发布
 
-**Completed:** 2026-05-06
+- [ ] 解决 npm 账户认证问题（2FA/令牌）
+- [ ] 用发布日期更新 CHANGELOG.md
+- [ ] 更新 README.md 状态为 "v0.1.0"
+- [ ] 运行 `npm publish --access public`
+- [ ] 在 npmjs.com 上验证
+- [ ] 使用标签创建 GitHub 发布
 
-- R0: Package review
-- R1: Extension integration
-- R2: Agent/template loading/config
-- R3: Command parsing/CLI UX
-- R4: Runner/history/metrics/JSON
-- R5: Tests/edge cases (minor gaps deferred)
-- R6: Documentation/user experience
-- R7: Final release readiness → Ready for 0.1.0
+### Token 用量追踪
 
-### D1-fix: ESM require is not defined
+- [ ] 需要实际的提供商调用集成
+- [ ] 从模型响应中收集用量数据
+- [ ] 通过 `/agents metrics` 或专用命令暴露
+- [ ] 设计隐私安全的输出格式
 
-**Completed:** 2026-05-06
+### 代理组合设计
 
-- Fixed `require('os').homedir()` in `src/metadata.ts`
-- Changed to `os.homedir()` (already imported)
-- Verified no require in dist/ output
-- Added ESM compatibility tests
-
-### D1-fix: Prompt-only UX clarification
-
-**Completed:** 2026-05-06
-
-- Added execution metadata (`executed`, `toolsExecuted`, `childSessionStarted`) to DelegationResult
-- Added UX banner for prompt-only mode
-- Updated help text with prompt-only warning
-- Created docs/dogfood.md guide
-- Updated README with current limitations section
+- [ ] 仅在自用验证中出现真实需求时
+- [ ] 代理 A 可以调用代理 B（依赖解析）
+- [ ] 设计组合/流水线模式
+- [ ] 如已实现，记录在设计文档中
 
 ---
 
-## References
+## 已推迟
 
-- [docs/project-state.md](project-state.md) — Current project state summary
-- [docs/reviews/index.md](reviews/index.md) — Review round details
-- [docs/roadmap.md](roadmap.md) — Feature roadmap
+这些功能已规划但未安排时间：
+
+### Token 用量追踪
+
+**状态：** 已推迟（需要实际的提供商调用）
+
+**理由：** 没有模型调用集成就无法追踪用量。
+
+### 流式传输（Streaming）
+
+**状态：** 已推迟（不在 v0.1.0 范围内）
+
+**理由：** 需要实际的提供商调用集成。
+
+### 调度器 / cron
+
+**状态：** 已推迟（不在 v0.1.0 范围内）
+
+**理由：** pi-slim-agents 是请求-响应模式，不是持久化的。
+
+### 工作树隔离（Worktree isolation）
+
+**状态：** 已推迟（不在 v0.1.0 范围内）
+
+**理由：** 增加复杂性但对 v0.1.0 没有明显收益。
+
+### MCP 集成
+
+**状态：** 已推迟（不在 v0.1.0 范围内）
+
+**理由：** MCP 生态系统尚未稳定。
+
+### `/agent` 中的标签自动补全
+
+**状态：** 已推迟（需要 pi-mono 补全 API）
+
+**理由：** 对核心功能不关键。
+
+### README 目录
+
+**状态：** 已推迟（锦上添花）
+
+**理由：** README 虽然较长但没有目录也能使用。
+
+### docs/ 导航索引
+
+**状态：** 已推迟（锦上添花）
+
+**理由：** 可在发布后添加。
 
 ---
 
-*Last updated: 2026-05-06*
+## 已完成
+
+这些行动已经完成：
+
+### R0-R7 审计
+
+**完成日期：** 2026-05-06
+
+- R0：包审查
+- R1：扩展集成
+- R2：代理/模板加载/配置
+- R3：命令解析/CLI 用户体验
+- R4：运行器/历史记录/指标/JSON
+- R5：测试/边界情况（小缺口已推迟）
+- R6：文档/用户体验
+- R7：最终发布就绪 → v0.1.0 已就绪
+
+### D1-fix：ESM require is not defined
+
+**完成日期：** 2026-05-06
+
+- 修复了 `src/metadata.ts` 中的 `require('os').homedir()`
+- 改为 `os.homedir()`（已导入）
+- 验证 dist/ 输出中无 require
+- 添加了 ESM 兼容性测试
+
+### D1-fix：提示词-only 用户体验澄清
+
+**完成日期：** 2026-05-06
+
+- 向 DelegationResult 添加了执行元数据（`executed`、`toolsExecuted`、`childSessionStarted`）
+- 为提示词-only 模式添加了用户体验横幅
+- 更新了帮助文本，添加提示词-only 警告
+- 创建了 docs/dogfood.md 指南
+- 更新了 README，添加当前限制部分
+
+---
+
+## 参考
+
+- [docs/project-state.md](project-state.md) — 当前项目状态摘要
+- [docs/reviews/index.md](reviews/index.md) — 审查轮次详情
+- [docs/roadmap.md](roadmap.md) — 功能路线图
+
+---
+
+*最后更新：2026-05-06*
