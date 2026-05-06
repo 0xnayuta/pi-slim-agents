@@ -14,6 +14,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { safeDisplayPath } from './security.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -112,7 +113,7 @@ export function collectFileMetadataWithContext(
     }
     
     // Check if it's in the user's home directory
-    const homeDir = require('os').homedir();
+    const homeDir = os.homedir();
     if (normalizedPath.startsWith(homeDir)) {
       result.sourcePathKind = 'user';
       result.sourcePath = '~' + normalizedPath.slice(homeDir.length).replace(/\\/g, '/');

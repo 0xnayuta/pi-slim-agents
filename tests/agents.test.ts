@@ -4527,6 +4527,159 @@ await test('getPackageTemplatesDir returns valid path', async () => {
   assert.ok(fs.existsSync(templatesDir!), 'templates dir should exist');
 });
 
+// ─── D1 Fix Tests: ESM Runtime Compatibility ────────────────────────
+
+/**
+ * D1-runtime-fix: Verify that collectFileMetadata works in ESM context
+ * without using CommonJS require().
+ * 
+ * Previously, metadata.ts used `require('os').homedir()` which fails in ESM.
+ * Fixed by using the already-imported `os.homedir()` instead.
+ */
+await test('collectFileMetadata does not use require (ESM compatible)', async () => {
+  const { collectFileMetadata } = await import('../src/metadata.js');
+  // This should not throw "require is not defined"
+  const metadata = collectFileMetadata(path.join(PROJECT_ROOT, 'agents', 'oracle.md'));
+  assert.ok(metadata !== null, 'should return metadata');
+  assert.ok(metadata.lastModified !== null, 'should have lastModified');
+  assert.ok(typeof metadata.sizeBytes === 'number', 'sizeBytes should be number');
+});
+
+await test('collectFileMetadata correctly identifies home directory paths', async () => {
+  const { collectFileMetadataWithContext } = await import('../src/metadata.js');
+  // Create a test file in the user's home directory for testing
+  const homeDir = os.homedir();
+  const testDir = path.join(homeDir, '.pi-slim-agents-test-tmp');
+  const testFile = path.join(testDir, 'test-agent.md');
+  
+  // Create the test file
+  try {
+    fs.mkdirSync(testDir, { recursive: true });
+    fs.writeFileSync(testFile, '---\nname: test-agent\n---\nTest agent body\n');
+    
+    const metadata = collectFileMetadataWithContext(testFile, {
+      cwd: '/some/project',
+    });
+    
+    // The sourcePathKind should be 'user' for paths in home directory
+    assert.equal(metadata.sourcePathKind, 'user', 'home dir paths should be identified as user-level');
+    assert.ok(metadata.sourcePath.startsWith('~'), 'user paths should start with ~');
+  } finally {
+    // Clean up
+    fs.rmSync(testDir, { recursive: true, force: true });
+  }
+});
+
+await test('collectFileMetadata correctly identifies package builtin paths', async () => {
+  const { collectFileMetadataWithContext } = await import('../src/metadata.js');
+  const { findPackageRoot } = await import('../src/utils.js');
+  
+  const packageRoot = findPackageRoot();
+  assert.ok(packageRoot !== null, 'should find package root');
+  
+  const builtinPath = path.join(packageRoot!, 'agents', 'explorer.md');
+  const metadata = collectFileMetadataWithContext(builtinPath, {
+    cwd: '/some/project',
+    packageRoot: packageRoot!,
+  });
+  
+  // The sourcePathKind should be 'builtin' for package internal paths
+  assert.equal(metadata.sourcePathKind, 'builtin', 'package paths should be identified as builtin');
+  assert.ok(!metadata.sourcePath.startsWith('~'), 'builtin paths should not start with ~');
+  assert.ok(metadata.lastModified !== null, 'should have lastModified');
+});
+
+await test('collectFileMetadata correctly identifies project paths', async () => {
+  const { collectFileMetadataWithContext } = await import('../src/metadata.js');
+  
+  const projectRoot = PROJECT_ROOT;
+  // Create a test file inside the project directory
+  const testDir = path.join(projectRoot, '.pi', 'slim-agents', 'agents');
+  const testFile = path.join(testDir, 'test-agent.md');
+  
+  // Create the test file
+  try {
+    fs.mkdirSync(testDir, { recursive: true });
+    fs.writeFileSync(testFile, '---\nname: test-agent\n---\nTest agent body\n');
+    
+    const metadata = collectFileMetadataWithContext(testFile, {
+      cwd: projectRoot,
+    });
+    
+    // The sourcePathKind should be 'project' for paths under cwd
+    assert.equal(metadata.sourcePathKind, 'project', 'project paths should be identified as project-level');
+    assert.ok(!metadata.sourcePath.startsWith('~'), 'project paths should not start with ~');
+    assert.ok(!metadata.sourcePath.startsWith('/'), 'project paths should not be absolute');
+  } finally {
+    // Clean up
+    fs.rmSync(testFile, { force: true });
+    fs.rmSync(path.dirname(testDir), { recursive: true, force: true });
+  }
+});
+
+await test('collectFileMetadata handles stat failure gracefully', async () => {
+  const { collectFileMetadata } = await import('../src/metadata.js');
+  // Should not throw, should return null metadata with basename
+  const metadata = collectFileMetadata('/nonexistent/path/agent.md');
+  assert.ok(metadata !== null, 'should return metadata object even on failure');
+  assert.equal(metadata.lastModified, null, 'lastModified should be null on failure');
+  assert.equal(metadata.sizeBytes, null, 'sizeBytes should be null on failure');
+  assert.equal(metadata.sourcePathKind, 'external', 'sourcePathKind should be external on failure');
+});
+
+await test('loadAgents works in ESM context without require errors', async () => {
+  // This tests the full agent loading pipeline which uses collectFileMetadata internally
+  const agents = loadAgents(PROJECT_ROOT, {});
+  assert.ok(agents.length > 0, 'should load at least some agents');
+  
+  // Check that metadata is populated for all loaded agents
+  for (const agent of agents) {
+    if (agent.metadata) {
+      assert.ok('lastModified' in agent.metadata, `${agent.name} metadata should have lastModified`);
+      assert.ok('sizeBytes' in agent.metadata, `${agent.name} metadata should have sizeBytes`);
+      assert.ok('sourcePathKind' in agent.metadata, `${agent.name} metadata should have sourcePathKind`);
+    }
+  }
+});
+
+await test('loadTemplates works in ESM context without require errors', async () => {
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  assert.equal(result.ok, true, 'should load templates successfully');
+  assert.ok(result.templates.length > 0, 'should have at least one template');
+  
+  // Check that metadata is populated for templates
+  for (const template of result.templates) {
+    if (template.metadata) {
+      assert.ok('lastModified' in template.metadata, `${template.name} template metadata should have lastModified`);
+      assert.ok('sizeBytes' in template.metadata, `${template.name} template metadata should have sizeBytes`);
+    }
+  }
+});
+
+await test('built-in agents are loaded with correct sourcePathKind', async () => {
+  const { collectFileMetadataWithContext } = await import('../src/metadata.js');
+  const { findPackageRoot } = await import('../src/utils.js');
+  
+  const packageRoot = findPackageRoot();
+  assert.ok(packageRoot !== null);
+  
+  const agents = loadAgents(PROJECT_ROOT, {});
+  const builtinAgents = agents.filter(a => a.source === 'package');
+  
+  assert.ok(builtinAgents.length > 0, 'should have at least one built-in agent');
+  
+  for (const agent of builtinAgents) {
+    const agentPath = path.join(packageRoot!, 'agents', `${agent.name}.md`);
+    const metadata = collectFileMetadataWithContext(agentPath, {
+      cwd: PROJECT_ROOT,
+      packageRoot: packageRoot!,
+    });
+    assert.equal(metadata.sourcePathKind, 'builtin', 
+      `${agent.name} should be identified as builtin`);
+  }
+});
+
 // ─── Summary ────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);
