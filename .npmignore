@@ -1,0 +1,54 @@
+# Source files - only dist/ is needed at runtime
+src/
+
+# Test files - not needed in published package
+tests/
+
+# GitHub configuration - not needed in published package
+.github/
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+tmp_add_tests.py
+tmp_fix_test.py
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment files
+.env
+.env.*
+
+# Local state directories (created at runtime)
+.pi-state/
+.pi/slim-agents/
+
+# TypeScript config - only needed for development
+tsconfig.json
+
+# Build info / cache
+*.tsbuildinfo
+
+# Optional development tools
+.eslintcache
+.stylelintcache
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Lock files (use pnpm-lock.yaml in project)
+*.lock
+package-lock.json
+yarn.lock

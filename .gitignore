@@ -144,3 +144,12 @@ vite.config.ts.timestamp-_*
 
 # pi-slim-agents persistent history
 .pi/slim-agents/history.jsonl
+
+# Python cache files (temporary scripts)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+tmp_add_tests.py
+tmp_fix_test.py

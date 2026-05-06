@@ -216,6 +216,30 @@ function checkLocalState(): CheckResult {
   return { passed: true, message: 'OK: No local state files in project root' };
 }
 
+function checkTestsNotPackaged(): CheckResult {
+  const pkgPath = join(root, 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+  
+  // tests/ should NOT be in the files array
+  if (pkg.files && Array.isArray(pkg.files) && pkg.files.includes('tests')) {
+    return { passed: false, message: 'INVALID: tests/ should not be in package.json files array (tests are for development only)' };
+  }
+  
+  return { passed: true, message: 'OK: tests/ is not in package.json files (correct - tests are development only)' };
+}
+
+function checkGitignoreIgnoresTests(): CheckResult {
+  const gitignorePath = join(root, '.gitignore');
+  const content = readFileSync(gitignorePath, 'utf-8');
+  
+  // Check for Python temporary files in .gitignore
+  if (!content.includes('*.py')) {
+    return { passed: false, message: 'WARNING: .gitignore should ignore Python temporary files (*.py, __pycache__, etc.)' };
+  }
+  
+  return { passed: true, message: 'OK: .gitignore includes Python temporary file patterns' };
+}
+
 // Run all checks
 console.log('='.repeat(60));
 console.log('Package Contents Check');
@@ -234,6 +258,8 @@ const checks = [
   { name: 'examples/prompt-evals/', fn: checkPromptEvals },
   { name: '.gitignore', fn: checkGitignore },
   { name: 'Local state files', fn: checkLocalState },
+  { name: 'tests/ not packaged', fn: checkTestsNotPackaged },
+  { name: '.gitignore Python patterns', fn: checkGitignoreIgnoresTests },
 ];
 
 let passed = 0;
