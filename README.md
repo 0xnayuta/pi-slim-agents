@@ -4,7 +4,14 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M7) — history/replay usability, /agent mode, persistent history.**
+**v0.1.0 (M8) — Agent Templates / Presets + Authoring Polish.**
+
+This release adds:
+- **Agent templates** — 7 pre-built templates for common specialist roles
+- **`/agents templates`** — List available templates
+- **`/agents create`** — Create a project-level agent from a template
+- **`/agents validate`** — Validate agent files across all locations
+- Improved agent authoring documentation
 
 | Mode | Behavior |
 |------|----------|
@@ -18,6 +25,8 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 - Create worktrees or isolate environments
 - Run council/voting flows
 - Support parallel agent execution
+- Support agent composition or pipelines
+- Track real token usage
 
 ### Provider-call status
 
@@ -36,12 +45,78 @@ When the pi-mono Extension API adds a direct model calling method (or pi-ai beco
 | `designer` | UI/UX specialist | UI/UX, styling, responsive design, interaction review | no |
 | `fixer` | Implementation specialist | Small bounded code changes, tests, bug fixes | no |
 
+## Agent Templates
+
+Templates are **not enabled by default**. They provide a starting point for creating project-level agents.
+
+| Template | Role | Best For | Read-only |
+|---------|------|----------|-----------|
+| `security-reviewer` | Security specialist | Input validation, auth, dependency risks | yes |
+| `test-writer` | Test planner | Test plans, test cases, coverage gaps | no |
+| `doc-generator` | Documentation specialist | README, API docs, changelogs | no |
+| `refactor-planner` | Refactoring planner | Cleanup plans, modernization guidance | yes |
+| `bug-triager` | Bug triage specialist | Narrowing down bug sources | yes |
+| `release-checker` | Pre-release checklist | Version bumps, changelogs, dry-runs | yes |
+| `cpp-reviewer` | C/C++ specialist | Memory safety, CMake, clangd diagnostics | yes |
+
+### List templates
+
+```text
+/agents templates
+```
+
+Output:
+
+```
+# Agent Templates
+
+7 templates available. Templates are not enabled by default.
+
+  Name                 Description                                          RO   Mode    Aliases
+  ─────────────────────────────────────────────────────────────────────────────────────────────
+  security-reviewer    Security risk reviewer for input validation...     yes  normal  security, sec-review
+  test-writer          Test planning and test case generation...           no   normal  tests, testing
+  ...
+
+Usage: /agents create <template> <agent-name>
+Example: /agents create security-reviewer security
+```
+
+### Create from template
+
+```text
+/agents create <template-name> <agent-name>
+```
+
+Examples:
+
+```text
+/agents create security-reviewer security
+/agents create cpp-reviewer cpp-reviewer
+/agents create test-writer test-writer
+/agents create bug-triager bug-triage
+```
+
+This creates a project-level agent at `.pi/slim-agents/agents/<agent-name>.md`. Run `/agents reload` to activate it.
+
+### Validate agents
+
+```text
+/agents validate
+```
+
+Validates agent files across all locations (built-in, templates, user-level, project-level). Checks:
+- Frontmatter parsing
+- Required fields (name, description, readonly)
+- Alias safety and conflicts
+- Empty body prompts
+- readonly=false boundary warnings
+
 ## Installation for local development
 
 ```bash
 pnpm install
 pnpm typecheck
-pnpm build
 pnpm test
 pnpm pack --dry-run
 pi install /path/to/pi-slim-agents
@@ -433,7 +508,7 @@ When provider-call is unavailable (e.g., pi-ai not importable), it falls back to
 Agents can be referenced by alias names in `delegate_agent`:
 
 | Alias | Resolves To |
-|-------|-------------|
+|-------|------------|
 | `search`, `find`, `locate` | `explorer` |
 | `docs`, `research`, `library` | `librarian` |
 | `arch`, `review`, `judge` | `oracle` |
@@ -586,12 +661,12 @@ If both `enabled` and `disabled` are set, `enabled` takes precedence.
 }
 ```
 
-## Custom agents
+## Custom Agents
 
 Project-level agents:
 
 ```text
-.pi/pi-slim-agents/agents/my-agent.md
+.pi/slim-agents/agents/my-agent.md
 ```
 
 User-level agents:
@@ -623,9 +698,21 @@ You are My Agent — a specialist in a narrow domain.
 
 Loading priority for the same name:
 
-1. Project-level `.pi/pi-slim-agents/agents/*.md`
+1. Project-level `.pi/slim-agents/agents/*.md`
 2. User-level `~/.pi/agent/pi-slim-agents/agents/*.md`
 3. Package built-in `agents/*.md`
+
+### Using Templates
+
+Templates provide starting points for common specialist roles:
+
+```text
+/agents templates
+/agents create security-reviewer security
+/agents reload
+```
+
+See [docs/agent-authoring.md](docs/agent-authoring.md) for full authoring guide.
 
 ## Provider-Call Status
 
@@ -641,7 +728,7 @@ This version intentionally does **not** support:
 
 - Real model calls via provider-call (falls back to prompt-only)
 - Agent-to-agent delegation
-- Provider-call streaming
+- Agent composition or pipelines
 - Provider-call streaming
 - Spawning pi subprocesses or child processes
 - True background agents or parallel execution
@@ -650,7 +737,7 @@ This version intentionally does **not** support:
 - Council / voting flows
 - Session resume for delegated agents
 - MCP integration
-- Automatic code modification by delegated agents
+- Automatic code modification by delegated agents (in prompt-only mode)
 - Persistent delegation history (in-memory by default; optional JSONL persistence)
 - Real token usage statistics
 
@@ -659,14 +746,13 @@ This version intentionally does **not** support:
 ```bash
 pnpm install
 pnpm typecheck
-pnpm build
 pnpm test
 pnpm pack --dry-run
 ```
 
-The test suite uses `tsx` (no test framework). It covers 200 tests:
+The test suite uses `tsx` (no test framework). It covers 223 tests:
 - All 6 built-in agents load correctly
-- Frontmatter parsing (name, description, readonly, temperature, aliases, enabled)
+- Frontmatter parsing (name, description, readonly, temperature, aliases, enabled, recommendedMode)
 - Invalid agent name rejection (spaces, slashes, path traversal, uppercase)
 - Unknown agent error messages with available agents list
 - Alias resolution for all default aliases
@@ -686,7 +772,7 @@ The test suite uses `tsx` (no test framework). It covers 200 tests:
 - determineDelegationStatus (success, fallback, error)
 - Status report (runnerMode, provider-call reason, agent list, secret sanitization)
 - History table and metrics formatting (with ID column, mode column, replayOf indicator)
-- Reload with project-level fixtures, config overrides, error preservation
+- Reload with project-level fixtures, config overrides, error preservation)
 - Agent source field (package, project)
 - `/agent` command parsing (agent, alias, empty, whitespace, help text)
 - `runAndRecordDelegation` (history recording, full task storage, storeFullTask/storeFullContext config)
@@ -698,6 +784,9 @@ The test suite uses `tsx` (no test framework). It covers 200 tests:
 - Replay with modifications (mode, agent, task, context, files overrides; replayOf; disabled agent)
 - Export history (JSON output, privacy stripping, filter support, replayOf included)
 - Persistent history (JSONL load, append, retention, nextId, no-op when disabled, write failure resilience)
+- **Templates** (load all 7 templates, required fields, getTemplate, unknown template)
+- **Create from template** (valid agent file, invalid name, path traversal, unknown template, no-overwrite, force-overwrite, correct name, loadable)
+- **Validate** (builtin agents, missing description, empty body, alias conflict, invalid alias, readonly boundary)
 
 ## License
 

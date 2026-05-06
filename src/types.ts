@@ -20,6 +20,8 @@ export interface AgentFrontmatter {
   aliases?: string[];
   /** Display order (lower = higher priority). */
   order?: number;
+  /** Recommended delegation mode for this agent (quick/normal/deep). */
+  recommendedMode?: string;
 }
 
 /** A fully resolved agent, ready for delegation. */
@@ -48,6 +50,8 @@ export interface AgentDefinition {
   sourcePath?: string;
   /** Where this agent was loaded from. */
   source?: AgentSource;
+  /** Recommended delegation mode (quick/normal/deep). */
+  recommendedMode?: string;
 }
 
 // ─── Configuration ─────────────────────────────────────────────────

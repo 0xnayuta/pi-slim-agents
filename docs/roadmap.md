@@ -115,14 +115,23 @@
 - [x] Standalone commands support filter args
 - [x] 200 tests covering all new functionality
 
-## v0.2.0 — Planned
+## v0.1.0 — M8: Agent Templates / Presets + Authoring Polish
 
-**Full provider-call when pi-mono API supports it.**
+**Quick-start templates for common specialist roles, validation, and authoring docs.**
 
-- [ ] Direct model calling via ExtensionAPI (when available)
-- [ ] Real provider-call with streaming results
-- [ ] Agent-specific model preferences (beyond "current")
-- [ ] Provider-call diagnostics (token usage, latency)
+- [x] `/agents templates` — List available agent templates
+- [x] `/agents create <template> <agent>` — Create project-level agent from template
+- [x] `/agents validate` — Validate agent files across all locations
+- [x] Standalone fallback commands: `/agents-templates`, `/agents-create`, `/agents-validate`
+- [x] 7 agent templates (security-reviewer, test-writer, doc-generator, refactor-planner, bug-triager, release-checker, cpp-reviewer)
+- [x] Template loading service with `loadTemplates`, `getTemplate`
+- [x] Agent creation from template with alias conflict detection
+- [x] Validation: frontmatter, required fields, alias safety/conflicts, empty body, readonly boundary
+- [x] `recommendedMode` field in frontmatter for template guidance
+- [x] Improved agent authoring documentation
+- [x] Updated skill guide with templates section
+- [x] Templates directory included in package distribution
+- [x] 223 tests covering all new functionality
 
 ## v0.3.0 — Planned
 

@@ -16,6 +16,7 @@ Delegate subtasks to specialist agents for better quality, speed, and focus.
 | `@oracle` | Strategic advisor | Architecture review, complex debugging, code review |
 | `@designer` | UI/UX specialist | Styling, responsive design, component architecture, visual polish |
 | `@fixer` | Implementation | Bounded code changes, test writing, bug fixes |
+| `@orchestrator` | Task coordinator | Decomposition and routing guidance |
 
 ## How to Use
 
@@ -71,6 +72,33 @@ delegate_agent({
 - **Architecture review / debugging strategy** → `oracle` / `arch` / `review` (use `--mode deep`)
 - **UI/UX review** → `designer` / `ui` / `ux`
 - **Small bounded implementation** → `fixer` / `fix` / `implement`
+
+## Creating Custom Agents
+
+If you need a specialist role that doesn't exist, check templates first:
+
+```
+/agents templates
+```
+
+If a template fits your needs, create a project-level agent:
+
+```
+/agents create security-reviewer security
+/agents reload
+```
+
+Then validate:
+
+```
+/agents validate
+```
+
+Keep custom agents narrow in scope:
+- ✅ "SQL query optimization specialist"
+- ❌ "General coding assistant"
+
+Don't create an agent for every small task — use built-in agents or delegate directly.
 
 ## Using History and Replay
 

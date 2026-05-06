@@ -29,6 +29,7 @@
   "files": [
     "dist",
     "agents",
+    "templates",
     "skills",
     "README.md",
     "LICENSE",

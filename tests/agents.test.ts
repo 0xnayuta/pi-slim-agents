@@ -32,6 +32,7 @@ import {
   formatReloadResult,
   performReload,
 } from '../src/status.js';
+import { loadTemplates, createAgentFromTemplate, validateAgents, formatTemplatesList, formatValidationResult, getTemplate } from '../src/templates.js';
 import type { AgentDefinition, DelegationRecord, DelegationResult, DelegateAgentParams, SlimAgentsConfig } from '../src/types.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -2230,6 +2231,327 @@ await test('persistent history nextId continues from loaded records', () => {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+// ─── 38. Templates ────────────────────────────────────────────────
+
+console.log('\n38. Templates');
+
+await test('loadTemplates loads all 7 templates', () => {
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  assert.equal(result.templates.length, 7, `Expected 7 templates, got ${result.templates.length}`);
+});
+
+await test('loadTemplates returns template names', () => {
+  const result = loadTemplates();
+  const names = result.templates.map(t => t.name);
+  assert.ok(names.includes('security-reviewer'), 'should include security-reviewer');
+  assert.ok(names.includes('test-writer'), 'should include test-writer');
+  assert.ok(names.includes('doc-generator'), 'should include doc-generator');
+  assert.ok(names.includes('refactor-planner'), 'should include refactor-planner');
+  assert.ok(names.includes('bug-triager'), 'should include bug-triager');
+  assert.ok(names.includes('release-checker'), 'should include release-checker');
+  assert.ok(names.includes('cpp-reviewer'), 'should include cpp-reviewer');
+});
+
+await test('templates have required fields', () => {
+  const result = loadTemplates();
+  for (const tmpl of result.templates) {
+    assert.ok(tmpl.name, `Template "${tmpl.name}" should have name`);
+    assert.ok(tmpl.description, `Template "${tmpl.name}" should have description`);
+    assert.ok(typeof tmpl.readonly === 'boolean', `Template "${tmpl.name}" should have readonly boolean`);
+    assert.ok(typeof tmpl.temperature === 'number', `Template "${tmpl.name}" should have temperature number`);
+    assert.ok(Array.isArray(tmpl.aliases), `Template "${tmpl.name}" should have aliases array`);
+    assert.ok(tmpl.recommendedMode, `Template "${tmpl.name}" should have recommendedMode`);
+    assert.ok(tmpl.filePath, `Template "${tmpl.name}" should have filePath`);
+  }
+});
+
+await test('security-reviewer template is readonly', () => {
+  const tmpl = getTemplate('security-reviewer');
+  assert.ok(tmpl, 'security-reviewer template should exist');
+  assert.equal(tmpl!.readonly, true);
+  assert.ok(tmpl!.description.includes('Security') || tmpl!.description.includes('security'));
+});
+
+await test('test-writer template is not readonly', () => {
+  const tmpl = getTemplate('test-writer');
+  assert.ok(tmpl, 'test-writer template should exist');
+  assert.equal(tmpl!.readonly, false);
+});
+
+await test('cpp-reviewer template has cpp-related aliases', () => {
+  const tmpl = getTemplate('cpp-reviewer');
+  assert.ok(tmpl, 'cpp-reviewer template should exist');
+  assert.ok(tmpl!.aliases.includes('cpp'), 'should have cpp alias');
+});
+
+await test('getTemplate returns null for unknown template', () => {
+  const tmpl = getTemplate('nonexistent');
+  assert.equal(tmpl, null);
+});
+
+// ─── 39. Create from template ─────────────────────────────────────
+
+console.log('\n39. Create from template');
+
+await test('createAgentFromTemplate creates a valid agent file', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = createAgentFromTemplate('security-reviewer', 'security', tmpDir);
+    assert.equal(result.ok, true);
+    assert.ok(result.filePath, 'should return filePath');
+    assert.ok(fs.existsSync(result.filePath!), 'file should exist');
+
+    const content = fs.readFileSync(result.filePath!, 'utf-8');
+    assert.ok(content.includes('name: security'), 'file should have updated name');
+    assert.ok(content.includes('You are'), 'file should have prompt body');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('createAgentFromTemplate rejects invalid agent name', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = createAgentFromTemplate('security-reviewer', 'Invalid Name', tmpDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.error!.includes('Invalid agent name'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('createAgentFromTemplate rejects invalid name with path traversal', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = createAgentFromTemplate('security-reviewer', '../evil', tmpDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.error!.includes('Invalid agent name'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('createAgentFromTemplate rejects unknown template', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = createAgentFromTemplate('nonexistent', 'my-agent', tmpDir);
+    assert.equal(result.ok, false);
+    assert.ok(result.error!.includes('not found'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('createAgentFromTemplate refuses to overwrite by default', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    // Create first time
+    const first = createAgentFromTemplate('security-reviewer', 'security', tmpDir);
+    assert.equal(first.ok, true);
+
+    // Try to create again
+    const second = createAgentFromTemplate('cpp-reviewer', 'security', tmpDir);
+    assert.equal(second.ok, false);
+    assert.ok(second.error!.includes('already exists'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('createAgentFromTemplate with force overwrites', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    // Create first time
+    const first = createAgentFromTemplate('security-reviewer', 'security', tmpDir);
+    assert.equal(first.ok, true);
+
+    // Force overwrite
+    const second = createAgentFromTemplate('cpp-reviewer', 'security', tmpDir, true);
+    assert.equal(second.ok, true);
+    assert.ok(fs.existsSync(second.filePath!), 'file should exist after force');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('created agent file has correct name in frontmatter', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = createAgentFromTemplate('cpp-reviewer', 'my-cpp-reviewer', tmpDir);
+    assert.equal(result.ok, true);
+
+    const content = fs.readFileSync(result.filePath!, 'utf-8');
+    assert.ok(content.includes('name: my-cpp-reviewer'), 'frontmatter name should match agent name');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('created agent can be loaded by loadAgents', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const result = createAgentFromTemplate('bug-triager', 'bug-triage', tmpDir);
+    assert.equal(result.ok, true);
+
+    const agents = loadAgents(tmpDir, {});
+    const bugTriage = agents.find(a => a.name === 'bug-triage');
+    assert.ok(bugTriage, 'created agent should be loadable');
+    assert.equal(bugTriage!.source, 'project');
+    assert.equal(bugTriage!.enabled, true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ─── 40. Validate ─────────────────────────────────────────────────
+
+
+console.log('\n40. Validate');
+
+await test('validateAgents returns ok for valid built-in agents', () => {
+  const result = validateAgents(PROJECT_ROOT);
+  assert.ok(result.checked.builtin > 0, 'should check builtin agents');
+  assert.ok(result.checked.template > 0, 'should check templates');
+});
+
+await test('validateAgents detects missing description', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, 'no-desc-agent.md'),
+      '---\nname: no-desc-agent\nreadonly: true\n---\n\nYou are No Desc Agent.',
+    );
+
+    const result = validateAgents(tmpDir);
+    const descWarnings = result.issues.filter(
+      i => i.type === 'warning' && i.message.includes('Missing description'),
+    );
+    assert.ok(descWarnings.length > 0, 'should warn about missing description');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('validateAgents detects empty body', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, 'empty-body.md'),
+      '---\nname: empty-body\ndescription: Test agent\nreadonly: true\n---\n',
+    );
+
+    const result = validateAgents(tmpDir);
+    const bodyErrors = result.issues.filter(
+      i => i.type === 'error' && i.message.includes('Empty prompt body'),
+    );
+    assert.ok(bodyErrors.length > 0, 'should error about empty body');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('validateAgents detects alias conflict', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    // Create agent with alias 'arch' (conflicts with oracle's alias)
+    fs.writeFileSync(
+      path.join(agentsDir, 'conflict-agent.md'),
+      '---\nname: conflict-agent\ndescription: Test agent\nreadonly: true\naliases:\n  - arch\n---\n\nYou are Conflict Agent.',
+    );
+
+    const result = validateAgents(tmpDir);
+    const conflictErrors = result.issues.filter(
+      i => i.type === 'error' && i.message.includes('conflicts'),
+    );
+    assert.ok(conflictErrors.length > 0, 'should detect alias conflict');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('validateAgents detects invalid alias', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, 'invalid-alias-agent.md'),
+      '---\nname: invalid-alias-agent\ndescription: Test agent\nreadonly: true\naliases:\n  - Invalid Alias\n---\n\nYou are Invalid Alias Agent.',
+    );
+
+    const result = validateAgents(tmpDir);
+    const aliasErrors = result.issues.filter(
+      i => i.type === 'error' && i.message.includes('Invalid alias'),
+    );
+    assert.ok(aliasErrors.length > 0, 'should detect invalid alias');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('validateAgents detects readonly=false without boundary', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slim-agents-test-'));
+  try {
+    const agentsDir = path.join(tmpDir, '.pi', 'pi-slim-agents', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentsDir, 'no-boundary-agent.md'),
+      '---\nname: no-boundary-agent\ndescription: Test agent\nreadonly: false\n---\n\nYou are No Boundary Agent. You do things.',
+    );
+
+    const result = validateAgents(tmpDir);
+    const boundaryWarnings = result.issues.filter(
+      i => i.type === 'warning' && i.message.includes('modification boundaries'),
+    );
+    assert.ok(boundaryWarnings.length > 0, 'should warn about missing boundary');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+await test('formatTemplatesList returns formatted output', () => {
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  const output = formatTemplatesList(result.templates);
+  assert.ok(output.includes('Agent Templates'), 'should have title');
+  assert.ok(output.includes('security-reviewer'), 'should list security-reviewer');
+  assert.ok(output.includes('Usage:'), 'should have usage section');
+});
+
+await test('formatValidationResult returns ok for no issues', () => {
+  const result = {
+    ok: true,
+    issues: [],
+    checked: { builtin: 6, template: 7, user: 0, project: 0, total: 13 },
+  };
+  const output = formatValidationResult(result);
+  assert.ok(output.includes('OK'), 'should show OK');
+  assert.ok(output.includes('Checked:'), 'should show checked count');
+});
+
+await test('formatValidationResult shows errors and warnings', () => {
+  const result = {
+    ok: false,
+    issues: [
+      { type: 'error', file: 'test.md', message: 'Invalid alias' },
+      { type: 'warning', file: 'test2.md', message: 'Missing description' },
+    ],
+    checked: { builtin: 6, template: 7, user: 0, project: 0, total: 13 },
+  };
+  const output = formatValidationResult(result);
+  assert.ok(output.includes('\u274c'), 'should show errors');
+  assert.ok(output.includes('\u26a0\ufe0f'), 'should show warnings');
+  assert.ok(output.includes('Invalid alias'), 'should include error message');
+  assert.ok(output.includes('Missing description'), 'should include warning message');
 });
 
 // ─── Summary ────────────────────────────────────────────────────────

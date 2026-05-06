@@ -42,6 +42,13 @@ import {
   parseReplayArgs,
   parseFlags,
 } from './commands.js';
+import {
+  loadTemplates,
+  createAgentFromTemplate,
+  validateAgents,
+  formatTemplatesList,
+  formatValidationResult,
+} from './templates.js';
 import type { DelegateAgentParams, RunnerMode, SlimAgentsConfig } from './types.js';
 
 // ─── Extension Factory ──────────────────────────────────────────────
@@ -172,6 +179,83 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     ctx.ui.notify(lines.join('\n'), 'info');
   }
 
+  // ── Templates handler ────────────────────────────────────────────
+
+  async function handleTemplates(ctx: any) {
+    const result = loadTemplates();
+
+    if (!result.ok) {
+      ctx.ui.notify(`❌ Failed to load templates: ${result.error}`, 'error');
+      return;
+    }
+
+
+    if (result.templates.length === 0) {
+      ctx.ui.notify('No templates found.', 'warning');
+      return;
+    }
+
+    ctx.ui.notify(formatTemplatesList(result.templates), 'info');
+  }
+
+
+  // ── Create handler ────────────────────────────────────────────────
+
+  async function handleCreate(args: string, ctx: any) {
+    const { flags, positional } = parseFlags(args);
+
+
+    if (positional.length < 2) {
+      ctx.ui.notify(
+        'Usage: /agents create <template-name> <agent-name> [--force]\n\n' +
+        'Examples:\n' +
+        '  /agents create security-reviewer security\n' +
+        '  /agents create cpp-reviewer cpp-reviewer\n' +
+        '  /agents create test-writer test-writer\n\n' +
+        'Use /agents templates to see available templates.',
+        'warning',
+      );
+      return;
+    }
+
+
+    const [templateName, agentName] = positional;
+    const force = flags.force === 'true';
+
+
+    config = loadConfig(cwd);
+    const result = createAgentFromTemplate(templateName, agentName, cwd, force);
+
+
+    if (!result.ok) {
+      ctx.ui.notify(`❌ Create failed: ${result.error}`, 'error');
+      return;
+    }
+
+
+    const lines: string[] = [`✅ Agent created: ${agentName}`];
+    lines.push(`   File: ${result.filePath}`);
+
+    if (result.warnings && result.warnings.length > 0) {
+      lines.push('', 'Warnings:');
+      for (const w of result.warnings) {
+        lines.push(`  - ${w}`);
+      }
+    }
+    lines.push('', 'Run /agents reload to activate the new agent.');
+    ctx.ui.notify(lines.join('\n'), 'info');
+  }
+
+
+  // ── Validate handler ───────────────────────────────────────────────
+
+  async function handleValidate(ctx: any) {
+    config = loadConfig(cwd);
+    const result = validateAgents(cwd);
+    ctx.ui.notify(formatValidationResult(result), 'info');
+  }
+
+
   // ── Replay handler ───────────────────────────────────────────────
 
   async function handleReplay(args: string, ctx: any) {
@@ -262,7 +346,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   // ── /agents command with subcommand dispatch ──────────────────────
 
-  const KNOWN_SUBCOMMANDS = ['status', 'reload', 'history', 'metrics', 'replay', 'export-history'];
+  const KNOWN_SUBCOMMANDS = ['status', 'reload', 'history', 'metrics', 'replay', 'export-history', 'templates', 'create', 'validate'];
 
   pi.registerCommand('agents', {
     description: 'List agents. Subcommands: status, reload, history, metrics, replay, export-history',
@@ -288,6 +372,12 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
           return handleReplay(rawArgs.slice('replay'.length), ctx);
         case 'export-history':
           return handleExportHistory(rawArgs.slice('export-history'.length), ctx);
+        case 'templates':
+          return handleTemplates(ctx);
+        case 'create':
+          return handleCreate(rawArgs.slice('create'.length), ctx);
+        case 'validate':
+          return handleValidate(ctx);
         default:
           ctx.ui.notify(
             `Unknown subcommand "${firstWord}". Available: ${KNOWN_SUBCOMMANDS.join(', ')}`,
@@ -327,6 +417,21 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   pi.registerCommand('agents-history-export', {
     description: 'Export delegation history as JSON',
     handler: async (args, ctx) => handleExportHistory(args ?? '', ctx),
+  });
+
+  pi.registerCommand('agents-templates', {
+    description: 'List available agent templates',
+    handler: async (_args, ctx) => handleTemplates(ctx),
+  });
+
+  pi.registerCommand('agents-create', {
+    description: 'Create a project-level agent from a template: /agents-create <template> <agent> [--force]',
+    handler: async (args, ctx) => handleCreate(args ?? '', ctx),
+  });
+
+  pi.registerCommand('agents-validate', {
+    description: 'Validate all agent files',
+    handler: async (_args, ctx) => handleValidate(ctx),
   });
 
   // ── /agent shortcut command ─────────────────────────────────────
