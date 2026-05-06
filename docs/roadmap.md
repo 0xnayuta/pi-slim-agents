@@ -1,5 +1,22 @@
 # Roadmap — pi-slim-agents
 
+## Current Status
+
+**v0.1.0 — Release-ready (npm publish deferred)**
+
+- ✅ All review rounds (R0-R7) completed
+- ✅ R7 conclusion: Ready for 0.1.0
+- ⚠️ npm publish temporarily blocked by account 2FA/token issue
+- 🔄 Current focus: Dogfood in devpiano
+
+**Phase:** Dogfood / pre-publish stabilization
+
+**Future feasibility spikes:**
+- M14: Provider-call real integration (pending pi-mono ExtensionAPI)
+- M17: Child session delegation (pending pi-mono API)
+
+---
+
 ## v0.1.0 — M2: Minimal Runnable Loop
 
 **Baseline delegation with prompt-only runner.**

@@ -406,11 +406,16 @@ Potential future milestones:
 
 ## Documentation
 
+- [docs/project-state.md](docs/project-state.md) — Current project status and state
+- [docs/next-actions.md](docs/next-actions.md) — Current task board
+- [docs/decisions.md](docs/decisions.md) — Key design decisions
+- [docs/roadmap.md](docs/roadmap.md) — Feature roadmap and milestone history
 - [docs/design.md](docs/design.md) — Architecture and design
+- [docs/dogfood.md](docs/dogfood.md) — Dogfooding guide
 - [docs/agent-authoring.md](docs/agent-authoring.md) — Agent creation guide
 - [docs/provider-call.md](docs/provider-call.md) — Provider-call investigation
 - [docs/prompt-tuning.md](docs/prompt-tuning.md) — Prompt quality checklist
-- [docs/roadmap.md](docs/roadmap.md) — Feature roadmap
+- [docs/reviews/index.md](docs/reviews/index.md) — Review round summary
 - [examples/prompt-evals/README.md](examples/prompt-evals/README.md) — Eval examples guide
 
 ## License
