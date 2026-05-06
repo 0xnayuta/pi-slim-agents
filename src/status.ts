@@ -16,7 +16,7 @@ import type { AgentDefinition, DelegationRecord, SlimAgentsConfig } from './type
 import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
 import { projectConfigPath, userConfigPath } from './utils.js';
-import type { MetricsSummary } from './history.js';
+import { historyStore, type MetricsSummary } from './history.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -49,6 +49,10 @@ export interface StatusReport {
   };
   lastReloadTime: string | null;
   delegationCount: number;
+  persistentHistory: {
+    enabled: boolean;
+    lastWarning: string | null;
+  };
 }
 
 export interface ReloadResult {
@@ -95,6 +99,9 @@ export function buildStatusReport(params: {
   const userPath = userConfigPath();
   const projPath = projectConfigPath(cwd);
 
+  // Get persistent history status
+  const persistentStatus = historyStore.getPersistentStatus();
+
   return {
     packageName: pkg.name,
     version: pkg.version,
@@ -124,6 +131,10 @@ export function buildStatusReport(params: {
     },
     lastReloadTime,
     delegationCount,
+    persistentHistory: {
+      enabled: persistentStatus.enabled,
+      lastWarning: persistentStatus.lastWarning ?? null,
+    },
   };
 }
 
@@ -166,6 +177,16 @@ export function formatStatusReport(report: StatusReport): string {
   }
 
   lines.push('', `Delegations: ${report.delegationCount} total`);
+
+  // Show persistent history status
+  if (report.persistentHistory.enabled) {
+    lines.push('Persistent History: enabled');
+    if (report.persistentHistory.lastWarning) {
+      lines.push(`  ⚠️  Last warning: ${report.persistentHistory.lastWarning}`);
+    }
+  } else {
+    lines.push('Persistent History: disabled');
+  }
 
   if (report.lastReloadTime) {
     lines.push(`Last Reload: ${report.lastReloadTime}`);

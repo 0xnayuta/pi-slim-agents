@@ -22,6 +22,7 @@ import {
 import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
 import { collectFileMetadata } from './metadata.js';
+import { sanitizeErrorMessage, safeDisplayPath } from './security.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -46,7 +47,10 @@ export interface TemplateLoadResult {
 
 export interface CreateResult {
   ok: boolean;
+  /** Absolute file path for internal use and testing */
   filePath?: string;
+  /** Safe display path for user-facing output (may differ from filePath) */
+  displayPath?: string;
   error?: string;
   warnings?: string[];
 }
@@ -197,9 +201,10 @@ export function createAgentFromTemplate(
 
   // Check for existing file
   if (fs.existsSync(targetPath) && !force) {
+    const safeDisplay = safeDisplayPath(targetPath, cwd);
     return {
       ok: false,
-      error: `Agent file already exists: ${targetPath}. Use --force to overwrite.`,
+      error: `Agent file already exists: ${safeDisplay}. Use --force to overwrite.`,
     };
   }
 
@@ -276,12 +281,18 @@ export function createAgentFromTemplate(
   }
 
   // Ensure directory exists
+  let dirCreated = false;
   try {
-    fs.mkdirSync(agentsDir, { recursive: true });
+    if (!fs.existsSync(agentsDir)) {
+      fs.mkdirSync(agentsDir, { recursive: true });
+      dirCreated = true;
+    }
   } catch (err) {
+    // Provide safe error message without exposing sensitive path details
+    const safeDirHint = dirCreated ? ' (directory creation succeeded but verify permissions)' : '';
     return {
       ok: false,
-      error: `Failed to create agents directory: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Failed to create agents directory${safeDirHint}. Check write permissions.`,
     };
   }
 
@@ -289,15 +300,24 @@ export function createAgentFromTemplate(
   try {
     fs.writeFileSync(targetPath, newContent, 'utf-8');
   } catch (err) {
+    // Sanitize the error message
+    const sanitizedError = sanitizeErrorMessage(err);
+    // Show safe display path instead of full path in error message
+    const fileSafePath = safeDisplayPath(targetPath, cwd);
     return {
       ok: false,
-      error: `Failed to write agent file: ${err instanceof Error ? err.message : String(err)}`,
+      filePath: targetPath, // Keep absolute path for backward compatibility
+      displayPath: fileSafePath, // Safe path for user-facing output
+      error: `Failed to write agent file "${fileSafePath}": ${sanitizedError}`,
     };
   }
 
+  // Return both absolute path (for internal use) and safe display path (for user output)
+  const resultSafePath = safeDisplayPath(targetPath, cwd);
   return {
     ok: true,
-    filePath: targetPath,
+    filePath: targetPath, // Keep absolute path for backward compatibility
+    displayPath: resultSafePath, // Safe path for user-facing output
     warnings: warnings.length > 0 ? warnings : undefined,
   };
 }

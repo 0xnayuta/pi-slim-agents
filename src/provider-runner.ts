@@ -19,6 +19,7 @@
 
 import type { AgentDefinition, DelegationResult, DelegateAgentParams, ProviderCallMeta, SlimAgentsConfig } from './types.js';
 import { buildExpectedOutputSection } from './output-template.js';
+import { sanitizeErrorMessage, getProviderUnavailableReason } from './security.js';
 
 // ─── Lazy pi-ai import ──────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ type CompleteFn = (
 
 let _piAiComplete: CompleteFn | null = null;
 let _piAiLoadAttempted = false;
-let _piAiLoadError: string | null = null;
+let _piAiLoadErrorType: string | null = null;
 
 async function getPiAiComplete(): Promise<CompleteFn | null> {
   if (_piAiLoadAttempted) return _piAiComplete;
@@ -49,9 +50,10 @@ async function getPiAiComplete(): Promise<CompleteFn | null> {
       _piAiComplete = piAi.complete as CompleteFn;
       return _piAiComplete;
     }
-    _piAiLoadError = 'pi-ai module loaded but does not export complete()';
-  } catch (err) {
-    _piAiLoadError = err instanceof Error ? err.message : String(err);
+    _piAiLoadErrorType = 'PI_AI_NO_COMPLETE';
+  } catch (_err) {
+    // Don't expose the actual error message - just categorize it
+    _piAiLoadErrorType = 'PI_AI_IMPORT_FAILED';
   }
 
   return null;
@@ -61,10 +63,14 @@ async function getPiAiComplete(): Promise<CompleteFn | null> {
  * Check if the provider-call runner can make real model calls.
  * Useful for diagnostics and /agents status.
  */
-export async function isProviderCallAvailable(): Promise<{ available: boolean; error?: string }> {
+export async function isProviderCallAvailable(): Promise<{ available: boolean; error?: string; errorType?: string }> {
   const fn = await getPiAiComplete();
   if (fn) return { available: true };
-  return { available: false, error: _piAiLoadError ?? 'unknown error' };
+  return { 
+    available: false, 
+    error: getProviderUnavailableReason(_piAiLoadErrorType ?? undefined),
+    errorType: _piAiLoadErrorType ?? 'UNKNOWN',
+  };
 }
 
 // ─── Provider-call runner ───────────────────────────────────────────
@@ -314,7 +320,8 @@ export async function runProviderDelegation(
       meta,
     };
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    // Sanitize the error message - don't expose stack traces or sensitive details
+    const sanitizedError = sanitizeErrorMessage(err);
     return {
       ok: true,
       prompt: '',
@@ -322,7 +329,7 @@ export async function runProviderDelegation(
       providerOutput: [
         `Agent: @${resolvedAgent}`,
         `Mode: provider-call`,
-        `Error: Model call failed — ${errorMsg}`,
+        `Error: Model call failed — ${sanitizedError}`,
         ``,
         `Fallback Prompt:`,
         buildFallbackPrompt(agent, params),
@@ -340,6 +347,8 @@ function buildFallbackResult(
   meta: ProviderCallMeta,
 ): DelegationResult {
   const fallbackPrompt = buildFallbackPrompt(agent, params);
+  // Use safe error reason without exposing implementation details
+  const safeError = getProviderUnavailableReason(_piAiLoadErrorType ?? undefined);
 
   return {
     ok: true,
@@ -349,7 +358,7 @@ function buildFallbackResult(
       `Agent: @${agent.name}`,
       `Mode: provider-call (fallback to prompt-only)`,
       `Task: ${params.task}`,
-      `Error: Provider-call is not available — @mariozechner/pi-ai could not be loaded at runtime.`,
+      `Error: ${safeError}`,
       ``,
       `Fallback Prompt:`,
       fallbackPrompt,

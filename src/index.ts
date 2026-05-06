@@ -72,6 +72,7 @@ import {
   serializeTemplateFilters,
 } from './format.js';
 import type { DelegateAgentParams, RunnerMode, SlimAgentsConfig } from './types.js';
+import { sanitizeErrorMessage } from './security.js';
 import * as fs from 'node:fs';
 
 // ─── Extension Factory ──────────────────────────────────────────────
@@ -425,7 +426,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
 
     const lines: string[] = [`✅ Agent created: ${agentName}`];
-    lines.push(`   File: ${result.filePath}`);
+    lines.push(`   File: ${result.displayPath ?? result.filePath}`);
 
     if (result.warnings && result.warnings.length > 0) {
       lines.push('', 'Warnings:');
@@ -828,8 +829,33 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   // ── Lightweight routing hint injection ─────────────────────────────
 
+  // Build routing hint based on current enabled agents
+  function buildRoutingHint(): string {
+    try {
+      const agents = loadAgents(cwd, config);
+      const enabledAgents = agents.filter(a => a.enabled);
+      
+      if (enabledAgents.length === 0) {
+        // No enabled agents - provide minimal hint
+        return '';
+      }
+      
+      // Build short hints for each enabled agent
+      const hints: string[] = [];
+      for (const agent of enabledAgents) {
+        const role = agent.role || agent.name;
+        hints.push(`${agent.name}=${role}`);
+      }
+      
+      return `\n\nSlim agents routing hints: ${hints.join('; ')}. Use delegate_agent only when the specialist prompt helps.`;
+    } catch {
+      // If loading fails, return empty hint rather than crashing
+      return '';
+    }
+  }
+
   pi.on('before_agent_start', async event => ({
-    systemPrompt: `${event.systemPrompt}\n\nSlim agents routing hints: explorer=code location search; librarian=external docs/library research; oracle=architecture judgment/review; fixer=small bounded implementation; designer=UI/UX and interaction review. Use delegate_agent only when the specialist prompt helps.`,
+    systemPrompt: `${event.systemPrompt}${buildRoutingHint()}`,
   }));
 
   // ── delegate_agent tool ───────────────────────────────────────────
@@ -872,45 +898,106 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { agent: agentName, task, context, files, mode } = params as DelegateAgentParams;
+      const startTime = Date.now();
 
-      // Refresh config
-      config = loadConfig(cwd);
+      try {
+        // Refresh config
+        config = loadConfig(cwd);
 
-      // Build provider-runner context
-      const providerCtx: ProviderRunnerContext | undefined = ctx
-        ? {
-            model: ctx.model as ProviderRunnerContext['model'],
-            modelRegistry: ctx.modelRegistry as ProviderRunnerContext['modelRegistry'],
+        // Build provider-runner context
+        const providerCtx: ProviderRunnerContext | undefined = ctx
+          ? {
+              model: ctx.model as ProviderRunnerContext['model'],
+              modelRegistry: ctx.modelRegistry as ProviderRunnerContext['modelRegistry'],
+            }
+          : undefined;
+
+        // Run delegation and record history
+        const result = await runAndRecordDelegation(
+          { agent: agentName, task, context, files, mode },
+          cwd,
+          config,
+          providerCallStatus?.available ?? false,
+          providerCtx,
+        );
+
+        const durationMs = Date.now() - startTime;
+
+        // Return result
+        if (!result.ok) {
+          // Record error in history even if delegation failed
+          if (!result.error?.includes('not found') && !result.error?.includes('disabled')) {
+            // Only record if it's not a validation error (those are handled elsewhere)
+            try {
+              historyStore.add({
+                timestamp: startTime,
+                requestedAgent: agentName,
+                resolvedAgent: result.agentName,
+                taskSummary: task.length > 80 ? task.slice(0, 77) + '...' : task,
+                mode: mode ?? 'normal',
+                runnerMode: config.runnerMode ?? 'prompt-only',
+                status: 'error',
+                durationMs,
+                providerCallAvailable: providerCallStatus?.available ?? false,
+                errorReason: sanitizeErrorMessage(result.error),
+                aliasUsed: agentName !== result.agentName,
+              });
+            } catch {
+              // History recording failure should not affect the error response
+            }
           }
-        : undefined;
+          
+          return {
+            content: [{ type: 'text', text: `❌ Delegation failed: ${result.error}` }],
+            details: { 
+              error: result.error,
+              code: 'DELEGATION_FAILED',
+            },
+          };
+        }
 
-      // Run delegation and record history
-      const result = await runAndRecordDelegation(
-        { agent: agentName, task, context, files, mode },
-        cwd,
-        config,
-        providerCallStatus?.available ?? false,
-        providerCtx,
-      );
+        const output = result.providerOutput ?? result.prompt;
 
-      // Return result
-      if (!result.ok) {
         return {
-          content: [{ type: 'text', text: `❌ ${result.error}` }],
-          details: { error: result.error },
+          content: [{ type: 'text', text: output }],
+          details: {
+            agent: result.agentName,
+            delegated: true,
+            meta: result.meta,
+          },
+        };
+      } catch (err) {
+        // Catch any unexpected errors and return a safe error response
+        const durationMs = Date.now() - startTime;
+        const sanitizedError = sanitizeErrorMessage(err);
+        
+        // Try to record the error in history
+        try {
+          historyStore.add({
+            timestamp: startTime,
+            requestedAgent: agentName,
+            resolvedAgent: agentName,
+            taskSummary: task.length > 80 ? task.slice(0, 77) + '...' : task,
+            mode: mode ?? 'normal',
+            runnerMode: config.runnerMode ?? 'prompt-only',
+            status: 'error',
+            durationMs,
+            providerCallAvailable: providerCallStatus?.available ?? false,
+            errorReason: sanitizedError,
+            aliasUsed: false,
+          });
+        } catch {
+          // History recording failure should not affect the error response
+        }
+
+        return {
+          content: [{ type: 'text', text: `❌ Delegation error: ${sanitizedError}` }],
+          details: { 
+            error: sanitizedError,
+            code: 'DELEGATION_EXECUTION_ERROR',
+          },
         };
       }
-
-      const output = result.providerOutput ?? result.prompt;
-
-      return {
-        content: [{ type: 'text', text: output }],
-        details: {
-          agent: result.agentName,
-          delegated: true,
-          meta: result.meta,
-        },
-      };
     },
   });
 }

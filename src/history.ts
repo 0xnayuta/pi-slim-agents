@@ -47,6 +47,7 @@ class HistoryStore {
   private persistent = false;
   private persistentPath = '';
   private retention = DEFAULT_MAX_HISTORY;
+  private lastWarning: { message: string; timestamp: number } | null = null;
 
   /**
    * Initialize persistent history storage.
@@ -61,6 +62,25 @@ class HistoryStore {
     this.retention = historyConfig.retention ?? DEFAULT_MAX_HISTORY;
 
     this.loadFromDisk();
+  }
+
+  /**
+   * Get the last warning message from persistent history operations.
+   * Returns null if no warnings have occurred.
+   */
+  getLastWarning(): { message: string; timestamp: number } | null {
+    return this.lastWarning;
+  }
+
+  /**
+   * Get persistent history status for diagnostics.
+   */
+  getPersistentStatus(): { enabled: boolean; path?: string; lastWarning?: string } {
+    return {
+      enabled: this.persistent,
+      path: this.persistent ? this.persistentPath : undefined,
+      lastWarning: this.lastWarning?.message,
+    };
   }
 
   add(record: Omit<DelegationRecord, 'id'>): DelegationRecord {
@@ -260,10 +280,15 @@ class HistoryStore {
       const dir = path.dirname(this.persistentPath);
       fs.mkdirSync(dir, { recursive: true });
       fs.appendFileSync(this.persistentPath, JSON.stringify(record) + '\n');
+      // Clear any previous warning on success
+      this.lastWarning = null;
     } catch (err) {
-      console.warn(
-        `[slim-agents] Failed to write persistent history: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      // Record warning for diagnostics but don't fail
+      this.lastWarning = {
+        message: `Failed to write history: ${err instanceof Error ? err.message.slice(0, 100) : 'Unknown error'}`,
+        timestamp: Date.now(),
+      };
+      console.warn(`[slim-agents] ${this.lastWarning.message}`);
     }
   }
 
@@ -273,10 +298,15 @@ class HistoryStore {
       fs.mkdirSync(dir, { recursive: true });
       const content = this.records.map(r => JSON.stringify(r)).join('\n') + '\n';
       fs.writeFileSync(this.persistentPath, content);
+      // Clear any previous warning on success
+      this.lastWarning = null;
     } catch (err) {
-      console.warn(
-        `[slim-agents] Failed to rewrite persistent history: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      // Record warning for diagnostics but don't fail
+      this.lastWarning = {
+        message: `Failed to rewrite history: ${err instanceof Error ? err.message.slice(0, 100) : 'Unknown error'}`,
+        timestamp: Date.now(),
+      };
+      console.warn(`[slim-agents] ${this.lastWarning.message}`);
     }
   }
 }
