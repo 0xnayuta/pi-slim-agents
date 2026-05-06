@@ -7,8 +7,8 @@ readonly: true
 order: 48
 tags:
   - release
-  - preflight
   - checklist
+  - readonly
 aliases:
   - release
   - preflight

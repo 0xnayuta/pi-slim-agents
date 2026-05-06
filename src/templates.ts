@@ -32,6 +32,7 @@ export interface TemplateInfo {
   aliases: string[];
   recommendedMode: string;
   filePath: string;
+  tags: string[];
 }
 
 export interface TemplateLoadResult {
@@ -64,6 +65,8 @@ export interface ValidationResult {
     project: number;
     total: number;
   };
+  tagsChecked: number;
+  invalidTagsCount: number;
 }
 
 // ─── Template Loading ───────────────────────────────────────────────
@@ -118,6 +121,9 @@ export function loadTemplates(): TemplateLoadResult {
           recommendedMode:
             typeof fm.recommendedMode === 'string' ? fm.recommendedMode : 'normal',
           filePath,
+          tags: Array.isArray(fm.tags)
+            ? fm.tags.filter((t): t is string => typeof t === 'string')
+            : [],
         });
       } catch (err) {
         // Skip unreadable files
@@ -302,6 +308,7 @@ export function createAgentFromTemplate(
 export function validateAgents(cwd: string): ValidationResult {
   const issues: ValidationIssue[] = [];
   const checked = { builtin: 0, template: 0, user: 0, project: 0, total: 0 };
+  const tagsCounters = { tagsChecked: 0, invalidTagsCount: 0 };
 
   // 1. Validate built-in agents
   const config = loadConfig(cwd);
@@ -362,6 +369,53 @@ export function validateAgents(cwd: string): ValidationResult {
         });
       }
     }
+
+    // Tags validation
+    const tags = agent.tags ?? [];
+    tagsCounters.tagsChecked += tags.length;
+
+    if (tags.length === 0) {
+      issues.push({
+        type: 'warning',
+        file: agent.sourcePath ?? 'builtin',
+        message: `Agent "${agent.name}" has no tags — consider adding tags for search/filtering`,
+        field: 'tags',
+      });
+    } else if (tags.length > 8) {
+      issues.push({
+        type: 'warning',
+        file: agent.sourcePath ?? 'builtin',
+        message: `Agent "${agent.name}" has ${tags.length} tags (recommended: ≤8)`,
+        field: 'tags',
+      });
+    }
+
+    // Validate individual tag safety
+    for (const tag of tags) {
+      if (!isValidTag(tag)) {
+        tagsCounters.invalidTagsCount++;
+        issues.push({
+          type: 'error',
+          file: agent.sourcePath ?? 'builtin',
+          message: `Invalid tag "${tag}" for agent "${agent.name}" — only lowercase letters, numbers, hyphens, underscores allowed`,
+          field: 'tags',
+        });
+      }
+    }
+
+    // Check for duplicate tags
+    const seenTags = new Set<string>();
+    for (const tag of tags) {
+      if (seenTags.has(tag)) {
+        issues.push({
+          type: 'warning',
+          file: agent.sourcePath ?? 'builtin',
+          message: `Duplicate tag "${tag}" in agent "${agent.name}"`,
+          field: 'tags',
+        });
+      }
+      seenTags.add(tag);
+    }
   }
 
   // 2. Validate templates
@@ -394,13 +448,58 @@ export function validateAgents(cwd: string): ValidationResult {
           field: 'description',
         });
       }
+
+      // Tags validation for templates
+      const tags = tmpl.tags ?? [];
+      tagsCounters.tagsChecked += tags.length;
+
+      if (tags.length === 0) {
+        issues.push({
+          type: 'warning',
+          file: tmpl.filePath,
+          message: `Template "${tmpl.name}" has no tags — consider adding tags for filtering`,
+          field: 'tags',
+        });
+      } else if (tags.length > 8) {
+        issues.push({
+          type: 'warning',
+          file: tmpl.filePath,
+          message: `Template "${tmpl.name}" has ${tags.length} tags (recommended: ≤8)`,
+          field: 'tags',
+        });
+      }
+
+      for (const tag of tags) {
+        if (!isValidTag(tag)) {
+          tagsCounters.invalidTagsCount++;
+          issues.push({
+            type: 'error',
+            file: tmpl.filePath,
+            message: `Invalid tag "${tag}" for template "${tmpl.name}" — only lowercase letters, numbers, hyphens, underscores allowed`,
+            field: 'tags',
+          });
+        }
+      }
+
+      const seenTags = new Set<string>();
+      for (const tag of tags) {
+        if (seenTags.has(tag)) {
+          issues.push({
+            type: 'warning',
+            file: tmpl.filePath,
+            message: `Duplicate tag "${tag}" in template "${tmpl.name}"`,
+            field: 'tags',
+          });
+        }
+        seenTags.add(tag);
+      }
     }
   }
 
   // 3. Validate user-level agents
   const userAgentsDir = getUserAgentsDir();
   if (fs.existsSync(userAgentsDir)) {
-    validateAgentDir(userAgentsDir, 'user', builtinNames, builtinAliases, issues, checked);
+    validateAgentDir(userAgentsDir, 'user', builtinNames, builtinAliases, issues, checked, tagsCounters);
   }
 
   // 4. Validate project-level agents
@@ -413,6 +512,7 @@ export function validateAgents(cwd: string): ValidationResult {
       builtinAliases,
       issues,
       checked,
+      tagsCounters,
     );
   }
 
@@ -433,6 +533,8 @@ export function validateAgents(cwd: string): ValidationResult {
     ok: issues.filter(i => i.type === 'error').length === 0,
     issues,
     checked,
+    tagsChecked: tagsCounters.tagsChecked,
+    invalidTagsCount: tagsCounters.invalidTagsCount,
   };
 }
 
@@ -443,6 +545,7 @@ function validateAgentDir(
   knownAliases: Map<string, string>,
   issues: ValidationIssue[],
   checked: ValidationResult['checked'],
+  tagsCounters: { tagsChecked: number; invalidTagsCount: number },
 ): void {
   try {
     const files = fs.readdirSync(dirPath);
@@ -561,6 +664,53 @@ function validateAgentDir(
           }
         }
 
+        // Tags validation for user/project agents
+        const tags = Array.isArray(fm.tags)
+          ? fm.tags.filter((t): t is string => typeof t === 'string')
+          : [];
+        tagsCounters.tagsChecked += tags.length;
+
+        if (tags.length === 0) {
+          issues.push({
+            type: 'warning',
+            file: filePath,
+            message: `Agent "${name}" has no tags — consider adding tags for search/filtering`,
+            field: 'tags',
+          });
+        } else if (tags.length > 8) {
+          issues.push({
+            type: 'warning',
+            file: filePath,
+            message: `Agent "${name}" has ${tags.length} tags (recommended: ≤8)`,
+            field: 'tags',
+          });
+        }
+
+        for (const tag of tags) {
+          if (!isValidTag(tag)) {
+            tagsCounters.invalidTagsCount++;
+            issues.push({
+              type: 'error',
+              file: filePath,
+              message: `Invalid tag "${tag}" for agent "${name}" — only lowercase letters, numbers, hyphens, underscores allowed`,
+              field: 'tags',
+            });
+          }
+        }
+
+        const seenTags = new Set<string>();
+        for (const tag of tags) {
+          if (seenTags.has(tag)) {
+            issues.push({
+              type: 'warning',
+              file: filePath,
+              message: `Duplicate tag "${tag}" in agent "${name}"`,
+              field: 'tags',
+            });
+          }
+          seenTags.add(tag);
+        }
+
         // Add name to known names
         knownNames.add(name);
       } catch (err) {
@@ -585,16 +735,16 @@ export function formatTemplatesList(templates: TemplateInfo[]): string {
   const lines: string[] = ['# Agent Templates', ''];
   lines.push(`${templates.length} template${templates.length === 1 ? '' : 's'} available. Templates are not enabled by default.`);
   lines.push('');
-  lines.push('  Name                 Description                                          RO   Mode    Aliases');
-  lines.push('  ' + '─'.repeat(85));
+  lines.push('  Name                 Description                                          RO   Mode    Tags');
+  lines.push('  ' + '─'.repeat(100));
 
   for (const tmpl of templates) {
     const name = tmpl.name.padEnd(18);
     const desc = truncate(tmpl.description, 48).padEnd(48);
     const ro = (tmpl.readonly ? 'yes' : 'no ').padEnd(4);
     const mode = tmpl.recommendedMode.padEnd(7);
-    const aliases = tmpl.aliases.length > 0 ? tmpl.aliases.join(', ') : '—';
-    lines.push(`  ${name} ${desc} ${ro} ${mode} ${aliases}`);
+    const tags = tmpl.tags.length > 0 ? tmpl.tags.slice(0, 4).join(', ') + (tmpl.tags.length > 4 ? '...' : '') : '—';
+    lines.push(`  ${name} ${desc} ${ro} ${mode} ${tags}`);
   }
   lines.push('');
   lines.push('Usage: /agents create <template> <agent-name>');
@@ -619,6 +769,8 @@ export function formatValidationResult(result: ValidationResult): string {
   lines.push(`  Templates: ${result.checked.template}`);
   lines.push(`  User-level: ${result.checked.user}`);
   lines.push(`  Project-level: ${result.checked.project}`);
+  lines.push('');
+  lines.push(`Tags: ${result.tagsChecked} checked, ${result.invalidTagsCount} invalid`);
   lines.push('');
 
   if (result.issues.length === 0) {
@@ -647,6 +799,18 @@ export function formatValidationResult(result: ValidationResult): string {
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen - 3) + '...';
+}
+
+// ─── Tag Validation ────────────────────────────────────────────────
+
+const VALID_TAG_RE = /^[a-z0-9][a-z0-9_-]*$/;
+
+/**
+ * Check if a tag is valid.
+ * Valid: lowercase letters, numbers, hyphens, underscores; starts with letter or number; non-empty.
+ */
+export function isValidTag(tag: string): boolean {
+  return VALID_TAG_RE.test(tag) && tag.length > 0;
 }
 
 // ─── Path Helpers ───────────────────────────────────────────────────

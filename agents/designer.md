@@ -7,8 +7,8 @@ order: 35
 tags:
   - ui
   - ux
-  - frontend
-  - styling
+  - design
+  - readonly
 aliases:
   - ui
   - ux

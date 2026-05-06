@@ -7,8 +7,8 @@ readonly: true
 order: 35
 tags:
   - refactor
-  - cleanup
   - planning
+  - readonly
 aliases:
   - refactor
   - cleanup-plan

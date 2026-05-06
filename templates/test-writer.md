@@ -6,9 +6,9 @@ temperature: 0.2
 readonly: false
 order: 45
 tags:
-  - testing
-  - quality
-  - tests
+  - test
+  - qa
+  - writable
 aliases:
   - tests
   - testing

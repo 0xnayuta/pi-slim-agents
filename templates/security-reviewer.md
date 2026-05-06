@@ -8,7 +8,7 @@ order: 40
 tags:
   - security
   - review
-  - validation
+  - readonly
 aliases:
   - security
   - sec-review

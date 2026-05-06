@@ -8,7 +8,7 @@ order: 20
 tags:
   - docs
   - research
-  - libraries
+  - readonly
 aliases:
   - docs
   - research

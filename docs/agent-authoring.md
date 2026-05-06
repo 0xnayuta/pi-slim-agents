@@ -64,7 +64,7 @@ You are My Agent — a specialist in [domain].
 | `role` | string | No | Role hint for the orchestrator. |
 | `temperature` | number | No | LLM temperature (0.0-1.0). Default: 0.2 |
 | `readonly` | boolean | No | If true, agent cannot modify files. Default: false |
-| `tags` | string[] | No | Tags for categorization. |
+| `tags` | string[] | No | Tags for search and filtering. See [Tags](#tags-design) below. |
 | `order` | number | No | Display order (lower = higher priority). Default: 100 |
 | `aliases` | string[] | No | Alternative names for this agent. |
 | `recommendedMode` | string | No | Recommended mode: quick, normal, or deep. |
@@ -191,6 +191,106 @@ Overall assessment
 - Do NOT run compiler builds unless asked
 ```
 
+## Tags Design
+
+Tags are metadata labels for search and filtering. They are **not used for delegation** — agents are still called by name or alias.
+
+### Fields
+
+```yaml
+tags:
+  - review
+  - security
+  - readonly
+```
+
+### Rules
+
+1. **All lowercase** — tags must use only lowercase letters, numbers, hyphens (`-`), and underscores (`_`)
+2. **Non-empty** — empty strings are not allowed
+3. **No duplicates** — duplicate tags produce a validation warning
+4. **Recommended ≤ 8** — more than 8 tags produces a warning
+5. **Missing tags** — agents without any tags produce a validation warning
+
+Valid examples:
+
+```yaml
+tags:
+  - review
+  - cpp
+  - cmake
+  - readonly
+```
+
+Invalid examples:
+
+```yaml
+# ❌ Contains spaces — invalid
+tags:
+  - "code review"
+
+# ❌ Uppercase — invalid
+tags:
+  - Review
+
+# ❌ Empty tag — invalid
+tags:
+  - review
+  - ""
+```
+
+### Common Tags
+
+| Tag | Meaning |
+|-----|---------|
+| `readonly` | Agent advises, does not modify files |
+| `writable` | Agent can modify files (use instead of negating `readonly`) |
+| `review` | Agent performs code/design review |
+| `docs` | Agent works with documentation |
+| `security` | Agent specializes in security concerns |
+| `test` | Agent works with tests |
+| `cpp` | Agent specializes in C/C++ |
+| `ui` | Agent works with UI/UX |
+| `planning` | Agent does planning or analysis |
+| `debug` | Agent specializes in debugging |
+| `meta` | Agent handles routing or orchestration |
+| `codebase` | Agent searches the local codebase |
+| `research` | Agent does external research |
+
+### Tags vs Aliases
+
+| | Alias | Tag |
+|--|-------|-----|
+| Used for | Calling the agent (`/agent search`) | Filtering agents (`/agents --tag docs`) |
+| Format | Lowercase alphanumeric + hyphen/underscore | Same |
+| Required | No | No (but recommended) |
+| Max recommended | Unlimited | ≤ 8 |
+| Example | `search`, `find` | `codebase`, `readonly`, `docs` |
+
+### When NOT to Add Tags
+
+Don’t add tags for:
+- Every keyword related to the agent (tags are not a full-text index)
+- Vague concepts that match most agents (e.g., `helpful`)
+- Tags that duplicate the agent name (e.g., an agent named `oracle` doesn’t need a tag `oracle`)
+
+Good: `security`, `review`, `readonly` for a security reviewer
+Bad: `security`, `sec`, `security-reviewer`, `sec-reviewer` (redundant)
+
+### Validation
+
+Run `/agents validate` to check your tags:
+
+```text
+/agents validate
+```
+
+Checks:
+- Each tag is valid (lowercase, alphanumeric, hyphen, underscore)
+- No duplicate tags
+- At least one tag present (warning)
+- No more than 8 tags (warning)
+
 ## Alias Design Rules
 
 Aliases let users call agents by alternative names:
@@ -249,6 +349,10 @@ Checks:
 - Empty prompt body
 - Invalid alias names
 - Alias conflicts with other agents
+- **Tags validity** — each tag must be lowercase alphanumeric with hyphens/underscores
+- **Tags duplicates** — duplicate tags produce a warning
+- **Tags presence** — agents without any tags produce a warning
+- **Tags count** — more than 8 tags produces a warning
 - readonly=false without modification boundaries
 
 ## Common Errors

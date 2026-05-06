@@ -6,9 +6,9 @@ temperature: 0.1
 readonly: true
 order: 42
 tags:
-  - debugging
+  - debug
   - triage
-  - bugs
+  - readonly
 aliases:
   - triage
   - debug

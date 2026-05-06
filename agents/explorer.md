@@ -6,9 +6,9 @@ temperature: 0.1
 readonly: true
 order: 10
 tags:
+  - codebase
   - search
-  - navigation
-  - discovery
+  - readonly
 aliases:
   - search
   - find

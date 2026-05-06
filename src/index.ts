@@ -41,6 +41,13 @@ import {
   replayDelegation,
   parseReplayArgs,
   parseFlags,
+  filterAgents,
+  filterTemplates,
+  formatAgentList,
+  formatTemplateList,
+  type AgentFilter,
+  type TemplateFilter,
+  type FilterableTemplate,
 } from './commands.js';
 import {
   loadTemplates,
@@ -147,8 +154,53 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
     ctx.ui.notify(formatMetrics(metrics), 'info');
   }
 
-  async function handleList(ctx: any) {
+  async function handleList(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
+    const hasFilters = Object.keys(flags).length > 0;
+
     const allAgents = loadAgents(cwd, config);
+
+    // Build filter from flags
+    const filter: AgentFilter = {};
+    if (flags.tag) {
+      filter.tags = Array.isArray(flags.tag) ? flags.tag : [flags.tag];
+    }
+    if (flags.query) filter.query = flags.query;
+    if (flags.readonly !== undefined) filter.readonly = true;
+    if (flags.writable !== undefined) filter.writable = true;
+    if (flags.enabled !== undefined) filter.enabled = true;
+    if (flags.disabled !== undefined) filter.disabled = true;
+    if (flags.source) {
+      const src = flags.source as 'builtin' | 'user' | 'project';
+      if (['builtin', 'user', 'project'].includes(src)) filter.source = src;
+    }
+
+    if (hasFilters) {
+      // Show only enabled agents in filtered view, with disabled section separate
+      const filtered = filterAgents(allAgents, filter);
+      const enabledFiltered = filtered.filter(a => a.enabled);
+      const disabledFiltered = filtered.filter(a => !a.enabled);
+
+      if (enabledFiltered.length === 0 && disabledFiltered.length === 0) {
+        const msg = formatAgentList([], filter);
+        ctx.ui.notify(`${msg}\n\nUse /agents without filters to see all agents.`, 'info');
+        return;
+      }
+
+      const lines: string[] = ['# Available Agents', ''];
+      lines.push(formatAgentList(enabledFiltered, filter));
+
+      if (disabledFiltered.length > 0) {
+        lines.push('', '# Disabled Agents');
+        lines.push(formatAgentList(disabledFiltered, filter).split('\n').map(l => '  ' + l).join('\n'));
+      }
+
+      lines.push('', `Showing ${filtered.length} agent${filtered.length === 1 ? '' : 's'}. Use /agents without filters to see all.`);
+      ctx.ui.notify(lines.join('\n'), 'info');
+      return;
+    }
+
+    // Default: no filters — show all agents
     const enabled = allAgents.filter(a => a.enabled);
     const disabled = allAgents.filter(a => !a.enabled);
 
@@ -163,6 +215,9 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       lines.push(`- @${agent.name} — ${agent.description} — readonly: ${agent.readonly ? 'yes' : 'no'}`);
       if (agent.aliases.length > 0) {
         lines.push(`  aliases: ${agent.aliases.join(', ')}`);
+      }
+      if (agent.tags.length > 0) {
+        lines.push(`  tags: ${agent.tags.slice(0, 8).join(', ')}`);
       }
     }
 
@@ -181,7 +236,8 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   // ── Templates handler ────────────────────────────────────────────
 
-  async function handleTemplates(ctx: any) {
+  async function handleTemplates(args: string, ctx: any) {
+    const { flags } = parseFlags(args);
     const result = loadTemplates();
 
     if (!result.ok) {
@@ -189,9 +245,39 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       return;
     }
 
-
     if (result.templates.length === 0) {
       ctx.ui.notify('No templates found.', 'warning');
+      return;
+    }
+
+    // Build template filter from flags
+    const filter: TemplateFilter = {};
+    if (flags.tag) {
+      filter.tags = Array.isArray(flags.tag) ? flags.tag : [flags.tag];
+    }
+    if (flags.query) filter.query = flags.query;
+    if (flags.readonly !== undefined) filter.readonly = true;
+    if (flags.writable !== undefined) filter.writable = true;
+
+    const hasFilters = Object.keys(flags).length > 0;
+
+    if (hasFilters) {
+      const asFilterable: FilterableTemplate[] = result.templates.map(t => ({
+        name: t.name,
+        description: t.description,
+        readonly: t.readonly,
+        aliases: t.aliases,
+        tags: t.tags,
+        recommendedMode: t.recommendedMode,
+      }));
+      const filtered = filterTemplates(asFilterable, filter);
+      const lines: string[] = ['# Agent Templates'];
+      lines.push(`Filtered: ${filtered.length} of ${result.templates.length} templates`);
+      lines.push('');
+      lines.push(formatTemplateList(filtered, filter));
+      lines.push('');
+      lines.push('Use /agents templates without filters to see all templates.');
+      ctx.ui.notify(lines.join('\n'), 'info');
       return;
     }
 
@@ -356,7 +442,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       const firstWord = rawArgs.split(/\s+/)[0]?.toLowerCase() ?? '';
 
       if (!rawArgs) {
-        return handleList(ctx);
+        return handleList('', ctx);
       }
 
       switch (firstWord) {
@@ -373,7 +459,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         case 'export-history':
           return handleExportHistory(rawArgs.slice('export-history'.length), ctx);
         case 'templates':
-          return handleTemplates(ctx);
+          return handleTemplates(rawArgs.slice('templates'.length), ctx);
         case 'create':
           return handleCreate(rawArgs.slice('create'.length), ctx);
         case 'validate':
@@ -421,7 +507,7 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
   pi.registerCommand('agents-templates', {
     description: 'List available agent templates',
-    handler: async (_args, ctx) => handleTemplates(ctx),
+    handler: async (args, ctx) => handleTemplates(args ?? '', ctx),
   });
 
   pi.registerCommand('agents-create', {

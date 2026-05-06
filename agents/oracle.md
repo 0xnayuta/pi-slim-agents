@@ -8,8 +8,7 @@ order: 30
 tags:
   - architecture
   - review
-  - debugging
-  - strategy
+  - readonly
 aliases:
   - arch
   - review

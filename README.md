@@ -4,14 +4,18 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M8) — Agent Templates / Presets + Authoring Polish.**
+**v0.1.0 (M9) — Agent Search / Filter + Tags Metadata.**
 
 This release adds:
-- **Agent templates** — 7 pre-built templates for common specialist roles
-- **`/agents templates`** — List available templates
-- **`/agents create`** — Create a project-level agent from a template
-- **`/agents validate`** — Validate agent files across all locations
-- Improved agent authoring documentation
+- **Tags metadata** — All built-in agents and templates have tags for categorization
+- **`/agents --tag <tag>`** — Filter agents by tag (AND semantics for multiple tags)
+- **`/agents --query <text>`** — Case-insensitive search across name, description, aliases, tags
+- **`/agents --readonly | --writable`** — Filter by read-only status
+- **`/agents --enabled | --disabled`** — Filter by enabled status
+- **`/agents --source builtin | user | project`** — Filter by source
+- **`/agents templates --tag <tag>`** — Filter templates by tag
+- **`/agents templates --query <text>`** — Search templates
+- **`/agents validate`** — Now checks tags (validity, duplicates, missing tags, count limits)
 
 | Mode | Behavior |
 |------|----------|
@@ -45,6 +49,8 @@ When the pi-mono Extension API adds a direct model calling method (or pi-ai beco
 | `designer` | UI/UX specialist | UI/UX, styling, responsive design, interaction review | no |
 | `fixer` | Implementation specialist | Small bounded code changes, tests, bug fixes | no |
 
+Each agent has **tags** for search and filtering (e.g., `codebase`, `search`, `readonly`, `writable`). Use `/agents --tag <tag>` to filter.
+
 ## Agent Templates
 
 Templates are **not enabled by default**. They provide a starting point for creating project-level agents.
@@ -72,14 +78,23 @@ Output:
 
 7 templates available. Templates are not enabled by default.
 
-  Name                 Description                                          RO   Mode    Aliases
-  ─────────────────────────────────────────────────────────────────────────────────────────────
-  security-reviewer    Security risk reviewer for input validation...     yes  normal  security, sec-review
-  test-writer          Test planning and test case generation...           no   normal  tests, testing
+  Name                 Description                                          RO   Mode    Tags
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────
+  security-reviewer    Security risk reviewer for input validation...     yes  normal  security, review, readonly
+  test-writer          Test planning and test case generation...           no   normal  test, qa, writable
   ...
 
 Usage: /agents create <template> <agent-name>
 Example: /agents create security-reviewer security
+```
+
+**Filter templates:**
+
+```text
+/agents templates --tag security       # templates tagged with "security"
+/agents templates --query docs         # match name, description, aliases, or tags
+/agents templates --readonly           # only read-only templates
+/agents templates --writable           # only writable templates
 ```
 
 ### Create from template
@@ -109,6 +124,10 @@ Validates agent files across all locations (built-in, templates, user-level, pro
 - Frontmatter parsing
 - Required fields (name, description, readonly)
 - Alias safety and conflicts
+- **Tags validity** — each tag must be lowercase alphanumeric with hyphens/underscores
+- **Tags duplicates** — duplicate tags produce a warning
+- **Tags presence** — agents/templates without any tags produce a warning
+- **Tags count** — more than 8 tags produces a warning
 - Empty body prompts
 - readonly=false boundary warnings
 
@@ -171,16 +190,56 @@ Expected shape:
 
 - @orchestrator — AI task orchestrator that decomposes work and delegates to specialist agents — readonly: no
   aliases: route, router
+  tags: routing, meta, readonly
 - @explorer — Fast codebase search and pattern matching specialist — readonly: yes
   aliases: search, find, locate
-- @librarian — Documentation and library research specialist — readonly: yes
-  aliases: docs, research, library
-- @oracle — Strategic technical advisor, code reviewer, and architecture consultant — readonly: yes
-  aliases: arch, review, judge
-- @designer — Frontend UI/UX specialist for intentional, polished visual experiences — readonly: no
-  aliases: ui, ux, design
-- @fixer — Fast, focused implementation specialist for bounded code changes — readonly: no
-  aliases: fix, implement, patch
+  tags: codebase, search, readonly
+...
+```
+
+**Filter agents by tag:**
+
+```text
+/agents --tag review        # agents tagged with "review"
+/agents --tag readonly     # read-only agents only
+/agents --tag security --tag review  # agents with BOTH tags (AND semantics)
+```
+
+**Search agents:**
+
+```text
+/agents --query cpp         # match name, description, aliases, or tags (case-insensitive)
+/agents --query "code search"
+```
+
+**Filter by read-only status:**
+
+```text
+/agents --readonly          # only read-only agents
+/agents --writable          # only writable (non-readonly) agents
+```
+
+**Filter by enabled status:**
+
+```text
+/agents --enabled
+/agents --disabled
+```
+
+**Filter by source:**
+
+```text
+/agents --source builtin    # built-in package agents
+/agents --source project    # project-level agents
+/agents --source user       # user-level agents
+```
+
+Filters can be combined:
+
+```text
+/agents --tag review --readonly
+/agents --tag cpp --source builtin
+/agents --query docs --writable
 ```
 
 ### Delegate to explorer (or use alias)
@@ -681,19 +740,19 @@ Example:
 
 ```markdown
 ---
-name: my-agent
-description: Custom project-specific agent
-role: specialist
-temperature: 0.2
+name: security-reviewer
+description: Security-focused review agent.
 readonly: true
-tags:
-  - custom
 aliases:
-  - mine
-  - custom
+  - security
+tags:
+  - security
+  - review
+  - readonly
 ---
 
-You are My Agent — a specialist in a narrow domain.
+You are Security Reviewer — a specialist in focused risk review.
+...
 ```
 
 Loading priority for the same name:
@@ -740,6 +799,8 @@ This version intentionally does **not** support:
 - Automatic code modification by delegated agents (in prompt-only mode)
 - Persistent delegation history (in-memory by default; optional JSONL persistence)
 - Real token usage statistics
+- Agent composition / pipelines
+- pi-ai importability fixes for provider-call
 
 ## Development
 

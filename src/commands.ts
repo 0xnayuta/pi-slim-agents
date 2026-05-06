@@ -27,6 +27,209 @@ export interface ParsedFlags {
   positional: string[];
 }
 
+// ─── Agent Filter Types ─────────────────────────────────────────────
+
+export interface AgentFilter {
+  /** Match agents that have ALL of these tags (AND semantics). */
+  tags?: string[];
+  /** Case-insensitive search in name, description, aliases, tags. */
+  query?: string;
+  /** Show only readonly agents. */
+  readonly?: boolean;
+  /** Show only writable (non-readonly) agents. */
+  writable?: boolean;
+  /** Show only enabled agents. */
+  enabled?: boolean;
+  /** Show only disabled agents. */
+  disabled?: boolean;
+  /** Filter by source: builtin (package), user, project. */
+  source?: 'builtin' | 'user' | 'project';
+}
+
+export interface TemplateFilter {
+  /** Match templates that have ALL of these tags (AND semantics). */
+  tags?: string[];
+  /** Case-insensitive search in name, description, aliases, tags. */
+  query?: string;
+  /** Show only readonly templates. */
+  readonly?: boolean;
+  /** Show only writable (non-readonly) templates. */
+  writable?: boolean;
+}
+
+// ─── Agent Filtering ────────────────────────────────────────────────
+
+/**
+ * Filter agents by search criteria.
+ * All filter conditions are ANDed together.
+ */
+export function filterAgents(agents: AgentDefinition[], filter: AgentFilter): AgentDefinition[] {
+  return agents.filter(agent => {
+    // Tag filter: ALL specified tags must be present
+    if (filter.tags && filter.tags.length > 0) {
+      for (const tag of filter.tags) {
+        if (!agent.tags.includes(tag)) return false;
+      }
+    }
+
+    // Query filter: case-insensitive match on name, description, aliases, tags
+    if (filter.query) {
+      const q = filter.query.toLowerCase();
+      const haystack = [
+        agent.name,
+        agent.description,
+        ...agent.aliases,
+        ...agent.tags,
+      ].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    // readonly filter
+    if (filter.readonly !== undefined) {
+      if (agent.readonly !== filter.readonly) return false;
+    }
+
+    // writable filter
+    if (filter.writable !== undefined) {
+      if (agent.readonly === filter.writable) return false;
+    }
+
+    // enabled filter
+    if (filter.enabled !== undefined) {
+      if (agent.enabled !== filter.enabled) return false;
+    }
+
+    // disabled filter
+    if (filter.disabled !== undefined) {
+      if (agent.enabled === filter.disabled) return false;
+    }
+
+    // source filter
+    if (filter.source !== undefined) {
+      const sourceMap: Record<string, string> = {
+        builtin: 'package',
+        user: 'user',
+        project: 'project',
+      };
+      const mapped = sourceMap[filter.source];
+      if (agent.source !== mapped) return false;
+    }
+
+    return true;
+  });
+}
+
+// ─── Template Filtering ──────────────────────────────────────────────
+
+export interface FilterableTemplate {
+  name: string;
+  description: string;
+  readonly: boolean;
+  aliases: string[];
+  tags: string[];
+  recommendedMode: string;
+}
+
+/**
+ * Filter templates by search criteria.
+ * All filter conditions are ANDed together.
+ */
+export function filterTemplates(templates: FilterableTemplate[], filter: TemplateFilter): FilterableTemplate[] {
+  return templates.filter(tmpl => {
+    // Tag filter: ALL specified tags must be present
+    if (filter.tags && filter.tags.length > 0) {
+      for (const tag of filter.tags) {
+        if (!tmpl.tags.includes(tag)) return false;
+      }
+    }
+
+    // Query filter
+    if (filter.query) {
+      const q = filter.query.toLowerCase();
+      const haystack = [
+        tmpl.name,
+        tmpl.description,
+        ...tmpl.aliases,
+        ...tmpl.tags,
+      ].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    // readonly filter
+    if (filter.readonly !== undefined) {
+      if (tmpl.readonly !== filter.readonly) return false;
+    }
+
+    // writable filter
+    if (filter.writable !== undefined) {
+      if (tmpl.readonly === filter.writable) return false;
+    }
+
+    return true;
+  });
+}
+
+// ─── Formatting ─────────────────────────────────────────────────────
+
+/**
+ * Format a list of agents for display (compact single-column format).
+ */
+export function formatAgentList(agents: AgentDefinition[], filter: AgentFilter): string {
+  const lines: string[] = [];
+
+  if (agents.length === 0) {
+    const hints: string[] = [];
+    if (filter.tags?.length) hints.push(`tag: ${filter.tags.join(', ')}`);
+    if (filter.query) hints.push(`query: "${filter.query}"`);
+    if (filter.readonly !== undefined) hints.push('readonly');
+    if (filter.writable !== undefined) hints.push('writable');
+    if (filter.enabled !== undefined) hints.push('enabled');
+    if (filter.disabled !== undefined) hints.push('disabled');
+    if (filter.source !== undefined) hints.push(`source: ${filter.source}`);
+
+    const hint = hints.length > 0 ? ` for: ${hints.join(', ')}` : '';
+    return `# No agents found${hint}`;
+  }
+
+  for (const agent of agents) {
+    const ro = agent.readonly ? 'readonly' : 'writable';
+    const status = agent.enabled ? '' : ' [disabled]';
+    const aliases = agent.aliases.length > 0 ? ` (${agent.aliases.join(', ')})` : '';
+    const tags = agent.tags.length > 0 ? ` [${agent.tags.slice(0, 5).join(', ')}${agent.tags.length > 5 ? '...' : ''}]` : '';
+    const src = agent.source ? ` [${agent.source}]` : '';
+    lines.push(`- @${agent.name}${status} — ${agent.description} — ${ro}${aliases}${tags}${src}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format a list of templates for display.
+ */
+export function formatTemplateList(templates: FilterableTemplate[], filter: TemplateFilter): string {
+  const lines: string[] = [];
+
+  if (templates.length === 0) {
+    const hints: string[] = [];
+    if (filter.tags?.length) hints.push(`tag: ${filter.tags.join(', ')}`);
+    if (filter.query) hints.push(`query: "${filter.query}"`);
+    if (filter.readonly !== undefined) hints.push('readonly');
+    if (filter.writable !== undefined) hints.push('writable');
+
+    const hint = hints.length > 0 ? ` for: ${hints.join(', ')}` : '';
+    return `# No templates found${hint}`;
+  }
+
+  for (const tmpl of templates) {
+    const ro = tmpl.readonly ? 'readonly' : 'writable';
+    const aliases = tmpl.aliases.length > 0 ? ` (${tmpl.aliases.join(', ')})` : '';
+    const tags = tmpl.tags.length > 0 ? ` [${tmpl.tags.slice(0, 5).join(', ')}${tmpl.tags.length > 5 ? '...' : ''}]` : '';
+    lines.push(`- ${tmpl.name} — ${tmpl.description} — ${ro}${aliases}${tags}`);
+  }
+
+  return lines.join('\n');
+}
+
 /**
  * Parse CLI-style flags from an argument string.
  *

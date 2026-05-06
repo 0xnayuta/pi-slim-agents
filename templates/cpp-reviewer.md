@@ -7,9 +7,10 @@ readonly: true
 order: 38
 tags:
   - cpp
-  - c
   - cmake
+  - clangd
   - review
+  - readonly
 aliases:
   - cpp
   - clangd-review

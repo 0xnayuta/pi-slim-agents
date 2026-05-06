@@ -6,8 +6,8 @@ temperature: 0.2
 order: 40
 tags:
   - implementation
-  - fixes
-  - tests
+  - fix
+  - writable
 aliases:
   - fix
   - implement

@@ -6,9 +6,9 @@ temperature: 0.2
 readonly: false
 order: 50
 tags:
-  - documentation
   - docs
   - writing
+  - writable
 aliases:
   - docs
   - writer

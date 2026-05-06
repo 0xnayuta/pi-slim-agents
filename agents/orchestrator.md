@@ -6,8 +6,8 @@ temperature: 0.1
 order: 1
 tags:
   - routing
-  - planning
-  - delegation
+  - meta
+  - readonly
 aliases:
   - route
   - router
