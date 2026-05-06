@@ -29,8 +29,9 @@ pi-slim-agents is NOT:
 - A scheduler
 - A council/voting system
 - An autonomous agent executor
+- A tool-executing subagent runner (in prompt-only mode)
 
-It is a lightweight specialist delegation layer that helps the main agent call focused role prompts.
+It is a lightweight specialist delegation layer that helps the main agent call focused role prompts. The default `/agent` command generates a delegation prompt but does not execute tools or spawn child agents.
 
 ## Features
 
@@ -87,6 +88,8 @@ Should show 6 built-in agents.
 /agent oracle review this design
 /agent fixer add null check to parseConfig
 ```
+
+> **Note:** In prompt-only mode (default), `/agent` returns a specialist delegation prompt — it does not execute tools or start a child agent. Use the generated prompt to guide the main agent, or ask it to perform the search directly with grep/read/bash.
 
 ### With mode
 
@@ -344,6 +347,30 @@ pnpm release:check
 ```
 
 ## Current Limitations
+
+### ⚠️  prompt-only is the stable default
+
+**In prompt-only mode (the default), `/agent` and `delegate_agent` only return a structured delegation prompt. They do NOT:**
+- Execute grep, read, bash, or any other tools
+- Start a background child agent
+- Automatically perform the search
+- Continue running after returning the prompt
+
+This means `/agent explorer find playback code` returns a specialist prompt for the explorer agent — it does not actually search the codebase. To perform a real search, ask the main pi session to use the generated prompt as guidance, or use grep/read/bash directly.
+
+**Example — two-step dogfood pattern:**
+```
+Step 1: /agent explorer find where playback scheduling is implemented
+Step 2: Ask pi: "Using the Explorer instructions above, actually search the
+        repository for playback scheduling. Use grep/read/bash and return
+        path:line evidence."
+```
+
+**Example — direct search (no /agent):**
+```
+Search the repository for playback scheduling implementation. Use grep/read/bash.
+Return path:line evidence.
+```
 
 This version intentionally does NOT support:
 

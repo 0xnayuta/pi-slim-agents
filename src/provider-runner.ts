@@ -214,13 +214,27 @@ export async function runProviderDelegation(
       agentName: resolvedAgent,
       providerOutput: [
         `Agent: @${resolvedAgent}`,
-        `Mode: provider-call`,
+        `Mode: provider-call (fallback: no model configured)`,
+        `Task: ${params.task}`,
         `Error: No model configured in the current session.`,
         ``,
         `Fallback Prompt:`,
         buildFallbackPrompt(agent, params),
+        ``,
+        `Metadata:`,
+        `- resolvedAgent: ${resolvedAgent}`,
+        `- requestedAgent: ${requestedAgent}`,
+        `- model: current`,
+        `- temperature: ${temperature}`,
+        `- runnerMode: provider-call (fallback)`,
       ].join('\n'),
+      message: `No model configured. Falling back to prompt-only for @${resolvedAgent}.`,
       meta,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
+      note: `Provider-call fallback: no model configured. No tools were executed.`,
     };
   }
 
@@ -241,13 +255,27 @@ export async function runProviderDelegation(
       agentName: resolvedAgent,
       providerOutput: [
         `Agent: @${resolvedAgent}`,
-        `Mode: provider-call`,
+        `Mode: provider-call (fallback: no API key)`,
+        `Task: ${params.task}`,
         `Error: Could not resolve API key — ${auth.error}`,
         ``,
         `Fallback Prompt:`,
         buildFallbackPrompt(agent, params),
+        ``,
+        `Metadata:`,
+        `- resolvedAgent: ${resolvedAgent}`,
+        `- requestedAgent: ${requestedAgent}`,
+        `- model: ${modelId}`,
+        `- temperature: ${temperature}`,
+        `- runnerMode: provider-call (fallback)`,
       ].join('\n'),
+      message: `Could not resolve API key. Falling back to prompt-only for @${resolvedAgent}.`,
       meta,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
+      note: `Provider-call fallback: could not resolve API key. No tools were executed.`,
     };
   }
 
@@ -284,13 +312,27 @@ export async function runProviderDelegation(
         agentName: resolvedAgent,
         providerOutput: [
           `Agent: @${resolvedAgent}`,
-          `Mode: provider-call`,
+          `Mode: provider-call (fallback: empty model response)`,
+          `Task: ${params.task}`,
           `Error: Model returned empty response.`,
           ``,
           `Fallback Prompt:`,
           buildFallbackPrompt(agent, params),
+          ``,
+          `Metadata:`,
+          `- resolvedAgent: ${resolvedAgent}`,
+          `- requestedAgent: ${requestedAgent}`,
+          `- model: ${modelId}`,
+          `- temperature: ${temperature}`,
+          `- runnerMode: provider-call (fallback)`,
         ].join('\n'),
+        message: `Model returned empty response. Falling back to prompt-only for @${resolvedAgent}.`,
         meta,
+        runnerMode: 'prompt-only',
+        executed: false,
+        toolsExecuted: false,
+        childSessionStarted: false,
+        note: `Provider-call fallback: model returned empty response. No tools were executed.`,
       };
     }
 
@@ -318,6 +360,11 @@ export async function runProviderDelegation(
       providerOutput: output,
       message: `Provider-call delegation to @${resolvedAgent} completed.`,
       meta,
+      runnerMode: 'provider-call',
+      executed: true,
+      toolsExecuted: false,
+      childSessionStarted: false,
+      note: 'Provider-call completed: model was called. No tools were executed by the runner.',
     };
   } catch (err) {
     // Sanitize the error message - don't expose stack traces or sensitive details
@@ -328,13 +375,27 @@ export async function runProviderDelegation(
       agentName: resolvedAgent,
       providerOutput: [
         `Agent: @${resolvedAgent}`,
-        `Mode: provider-call`,
+        `Mode: provider-call (fallback: model call failed)`,
+        `Task: ${params.task}`,
         `Error: Model call failed — ${sanitizedError}`,
         ``,
         `Fallback Prompt:`,
         buildFallbackPrompt(agent, params),
+        ``,
+        `Metadata:`,
+        `- resolvedAgent: ${resolvedAgent}`,
+        `- requestedAgent: ${requestedAgent}`,
+        `- model: ${modelId}`,
+        `- temperature: ${temperature}`,
+        `- runnerMode: provider-call (fallback)`,
       ].join('\n'),
+      message: `Model call failed. Falling back to prompt-only for @${resolvedAgent}.`,
       meta,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
+      note: `Provider-call fallback: model call failed — ${sanitizedError}. No tools were executed.`,
     };
   }
 }
@@ -372,6 +433,11 @@ function buildFallbackResult(
     ].join('\n'),
     message: `Provider-call unavailable. Falling back to prompt-only for @${agent.name}.`,
     meta,
+    runnerMode: 'prompt-only',
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
+    note: `Provider-call fallback: ${safeError}. No tools were executed.`,
   };
 }
 

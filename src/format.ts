@@ -122,6 +122,10 @@ export interface AgentResultJsonOutput {
   durationMs: number;
   historyId: number | null;
   replayOf: number | null;
+  executed: boolean;
+  toolsExecuted: boolean;
+  childSessionStarted: boolean;
+  note?: string;
   providerCall: {
     available: boolean;
     fallback: boolean;
@@ -160,6 +164,10 @@ export function formatAgentResultJson(params: {
   durationMs: number;
   historyId: number | null;
   replayOf?: number | null;
+  executed: boolean;
+  toolsExecuted: boolean;
+  childSessionStarted: boolean;
+  note?: string;
   providerCallAvailable: boolean;
   error?: string;
   output?: string | null;
@@ -179,6 +187,10 @@ export function formatAgentResultJson(params: {
     durationMs: params.durationMs,
     historyId: params.historyId,
     replayOf: params.replayOf ?? null,
+    executed: params.executed,
+    toolsExecuted: params.toolsExecuted,
+    childSessionStarted: params.childSessionStarted,
+    note: params.note,
     providerCall: {
       available: params.providerCallAvailable,
       fallback: params.status === 'fallback',

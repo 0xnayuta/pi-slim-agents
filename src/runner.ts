@@ -49,6 +49,10 @@ export async function runDelegation(
       prompt: '',
       agentName: params.agent,
       error: `Invalid agent name "${params.agent}". Allowed characters: lowercase letters, numbers, hyphen, underscore. Available: ${available}`,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
     };
   }
 
@@ -64,6 +68,10 @@ export async function runDelegation(
       prompt: '',
       agentName: params.agent,
       error: `Agent "${params.agent}" not found. Available: ${available}`,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
     };
   }
 
@@ -79,6 +87,10 @@ export async function runDelegation(
       prompt: '',
       agentName: resolvedName,
       error: `Agent "${resolvedName}"${viaAlias} is disabled. To enable, add { "agents": { "${resolvedName}": { "enabled": true } } } to .pi/slim-agents.json. Available enabled agents: ${available}`,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
     };
   }
 
@@ -90,11 +102,21 @@ export async function runDelegation(
   }
 
   // Default: prompt-only
+  const note =
+    'Prompt-only delegation: this returns a specialist prompt. ' +
+    'No tools were executed. No child agent was started. ' +
+    'Use the generated prompt to guide the main agent, or ask the main session to perform the search manually with grep/read/bash.';
+
   return {
     ok: true,
     prompt: buildDelegationPrompt(agent, params, config),
     agentName: agent.name,
     message: `Delegating to @${agent.name} (${agent.role}). ${agent.readonly ? 'This agent is read-only.' : ''}`,
+    runnerMode: 'prompt-only',
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
+    note,
   };
 }
 
@@ -108,11 +130,21 @@ async function runProviderCallOrFallback(
 ): Promise<DelegationResult> {
   if (!ctx) {
     // No context available — cannot do provider-call, fall back to prompt-only
+    const note =
+      'Prompt-only fallback: provider-call was requested but no ExtensionContext was available. ' +
+      'No tools were executed. No child agent was started. ' +
+      'Use the generated prompt to guide the main agent.';
+
     return {
       ok: true,
       prompt: buildDelegationPrompt(agent, params, config),
       agentName: agent.name,
       message: `Provider-call mode requested but no ExtensionContext available. Returning prompt-only for @${agent.name}.`,
+      runnerMode: 'prompt-only',
+      executed: false,
+      toolsExecuted: false,
+      childSessionStarted: false,
+      note,
     };
   }
 
@@ -134,10 +166,35 @@ export function formatDelegationResult(result: DelegationResult): string {
     return result.providerOutput;
   }
 
+  // Prompt-only mode — show a clear UX banner so users don't mistake
+  // this for an actual search result.
+  const bannerLines: string[] = [];
+
+  if (result.runnerMode === 'prompt-only') {
+    const isFallback = result.note?.includes('fallback') ?? false;
+
+    bannerLines.push(
+      isFallback
+        ? '⚠️  Prompt-only (fallback) — no tools were executed'
+        : '⚠️  Prompt-only delegation — no tools were executed',
+    );
+    bannerLines.push(
+      '   This is a specialist prompt only. No child agent was started.',
+    );
+    bannerLines.push(
+      '   Use this prompt to guide the main agent, or ask it to perform',
+    );
+    bannerLines.push(
+      '   the search manually with grep/read/bash.',
+    );
+    bannerLines.push('');
+  }
+
   const lines = [
     `📋 Delegated to @${result.agentName}`,
     result.message ?? '',
     '',
+    ...bannerLines,
     '--- Delegation Prompt ---',
     result.prompt,
     '--- End ---',

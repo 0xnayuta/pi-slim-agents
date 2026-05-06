@@ -176,6 +176,16 @@ export interface DelegationResult {
   providerOutput?: string;
   /** Provider-call metadata. */
   meta?: ProviderCallMeta;
+  /** The runner mode used for this delegation. */
+  runnerMode: RunnerMode;
+  /** Whether this delegation actually executed (ran tools, made model calls). Always false in prompt-only mode. */
+  executed: boolean;
+  /** Whether any tools were called (grep, read, bash, etc.). Always false in prompt-only mode. */
+  toolsExecuted: boolean;
+  /** Whether a child session / subagent was started. Always false in prompt-only mode. */
+  childSessionStarted: boolean;
+  /** Human-readable note describing what happened. Useful for UX clarity in prompt-only mode. */
+  note?: string;
 }
 
 // ─── Delegation History ─────────────────────────────────────────────

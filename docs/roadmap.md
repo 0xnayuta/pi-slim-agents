@@ -319,4 +319,34 @@ These items were identified during R7 final release review but are non-blocking 
 
 ---
 
+## D1: prompt-only UX Clarification (v0.1.x)
+
+**Completed 2026-05-06 — dogfood fix for v0.1.0.**
+
+### Problem
+In prompt-only mode, `/agent explorer find X` returns only the delegation prompt. It does not execute tools, search the codebase, or start a child agent. This was not clearly communicated to users, causing confusion during dogfood testing.
+
+### Changes Made
+- **runner.ts**: Added execution metadata (`runnerMode`, `executed`, `toolsExecuted`, `childSessionStarted`, `note`) to `DelegationResult`. Added UX banner to `formatDelegationResult` for prompt-only outputs.
+- **provider-runner.ts**: Added execution metadata to all fallback return paths.
+- **types.ts**: Extended `DelegationResult` interface with execution metadata fields.
+- **format.ts**: Extended `AgentResultJsonOutput` and `formatAgentResultJson` with execution fields.
+- **index.ts**: Passes execution metadata from delegation result to JSON formatters and delegate_agent tool details.
+- **commands.ts**: Updated `buildAgentHelpText` with prompt-only warning, two-step dogfood pattern, and direct search example.
+- **README.md**: Added prompt-only clarification section in "Current Limitations", updated "What this is NOT" and "Delegate a task" sections.
+- **docs/dogfood.md**: New file with dogfood guide including two-step pattern, direct search alternatives, and reporting instructions.
+- **skills/use-slim-agents/SKILL.md**: Added prompt-only behavior note, two-step pattern guidance, and post-delegation guidance.
+- **tests**: 6 new tests covering execution metadata, formatDelegationResult banner, buildAgentHelpText warning, and JSON execution fields.
+
+### Not Implemented (out of scope for D1)
+- **Real provider-call integration** — pending pi-mono ExtensionAPI
+- **Child session runner** — pending pi-mono API
+- **Tool-executing delegation** — requires provider-call or child-session
+
+### Future Integration Points
+- **provider-call real integration**: Currently architectural only; `executed: true` when real (pending pi-mono ExtensionAPI)
+- **child-session runner**: Independent model calls; `childSessionStarted: true` when implemented (v0.4.0 planned)
+
+---
+
 *Last updated: 2026-05-06*

@@ -418,6 +418,87 @@ await test('explicit prompt-only mode behaves the same', async () => {
   assert.ok(result.prompt.includes('quick'));
 });
 
+// D1-fix: prompt-only UX tests ──────────────────────────────────────
+
+await test('prompt-only mode sets executed=false, toolsExecuted=false, childSessionStarted=false', async () => {
+  const result = await runDelegation(
+    { agent: 'explorer', task: 'Find playback code' },
+    PROJECT_ROOT,
+    {},
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.executed, false, 'executed should be false in prompt-only mode');
+  assert.equal(result.toolsExecuted, false, 'toolsExecuted should be false in prompt-only mode');
+  assert.equal(result.childSessionStarted, false, 'childSessionStarted should be false in prompt-only mode');
+  assert.equal(result.runnerMode, 'prompt-only');
+  assert.ok(result.note?.includes('No tools were executed'), 'note should mention no tools were executed');
+  assert.ok(result.note?.includes('Prompt-only delegation'), 'note should say prompt-only');
+});
+
+await test('prompt-only mode result has note with guidance', async () => {
+  const result = await runDelegation(
+    { agent: 'oracle', task: 'Review architecture' },
+    PROJECT_ROOT,
+    {},
+  );
+  assert.equal(result.ok, true);
+  assert.ok(result.note, 'should have a note');
+  assert.ok(result.note!.length > 20, 'note should be substantial');
+  assert.ok(result.note!.includes('Prompt-only'), 'note should mention prompt-only');
+  assert.ok(result.note!.includes('No tools were executed'), 'note should mention no tools');
+  assert.ok(result.note!.includes('child agent'), 'note should mention child agent');
+});
+
+await test('formatDelegationResult shows prompt-only banner for prompt-only result', async () => {
+  const { formatDelegationResult } = await import('../src/runner.js');
+  const result = await runDelegation(
+    { agent: 'explorer', task: 'Find config' },
+    PROJECT_ROOT,
+    {},
+  );
+  const formatted = formatDelegationResult(result);
+  assert.ok(formatted.includes('Prompt-only') || formatted.includes('prompt-only'), 'should mention prompt-only');
+  assert.ok(formatted.includes('no tools were executed'), 'should say no tools executed');
+  assert.ok(formatted.includes('no child agent') || formatted.includes('child agent'), 'should mention child agent');
+  assert.ok(formatted.includes('--- Delegation Prompt ---'), 'should show delegation prompt');
+  assert.ok(formatted.includes('--- End ---'), 'should close delegation prompt');
+});
+
+await test('formatDelegationResult does NOT show banner for provider-call output', async () => {
+  const { formatDelegationResult } = await import('../src/runner.js');
+  const config: SlimAgentsConfig = { runnerMode: 'provider-call' };
+  const mockCtx: ProviderRunnerContext = {
+    model: undefined,
+    modelRegistry: {
+      async getApiKeyAndHeaders() { return { ok: false, error: 'no model' }; },
+    },
+  };
+  const result = await runDelegation(
+    { agent: 'oracle', task: 'Review' },
+    PROJECT_ROOT,
+    config,
+    mockCtx,
+  );
+  const formatted = formatDelegationResult(result);
+  assert.ok(result.providerOutput, 'should have providerOutput');
+  assert.equal(formatted, result.providerOutput, 'providerOutput should be returned directly');
+});
+
+await test('provider-call fallback result has executed=false and fallback note', async () => {
+  const config: SlimAgentsConfig = { runnerMode: 'provider-call' };
+  const result = await runDelegation(
+    { agent: 'oracle', task: 'Review this' },
+    PROJECT_ROOT,
+    config,
+    // no ctx — should fall back
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.executed, false, 'executed should be false in fallback');
+  assert.equal(result.toolsExecuted, false, 'toolsExecuted should be false in fallback');
+  assert.equal(result.childSessionStarted, false, 'childSessionStarted should be false in fallback');
+  assert.ok(result.note?.includes('fallback') || result.note?.includes('ExtensionContext'), 'note should mention fallback');
+});
+
 // ─── 9. runnerMode = provider-call with no API ──────────────────────
 
 console.log('\n9. runnerMode = provider-call (no real API)');
@@ -1269,6 +1350,15 @@ await test('buildAgentHelpText returns help with examples', () => {
   assert.ok(help.includes('quick') && help.includes('normal') && help.includes('deep'), 'should list all mode values');
   assert.ok(help.includes('text') && help.includes('json'), 'should list all format values');
   assert.ok(help.includes('Aliases:'), 'should document alias mappings');
+});
+
+// D1-fix: buildAgentHelpText prompt-only warning
+await test('buildAgentHelpText includes prompt-only warning', () => {
+  const help = buildAgentHelpText();
+  assert.ok(help.includes('prompt-only') || help.includes('prompt only'), 'should mention prompt-only mode');
+  assert.ok(help.includes('prompt-only') || help.includes('no tools'), 'should clarify tools are not executed');
+  assert.ok(help.includes('Two-step') || help.includes('dogfood') || help.includes('Step 1'), 'should include dogfood guidance');
+  assert.ok(help.includes('grep'), 'should mention available tools');
 });
 
 // ─── 27. /agent writes to history ──────────────────────────────────
@@ -3528,6 +3618,7 @@ console.log('\nM11: JSON / Metadata / Agent Result');
 await test('/agent --format json produces valid JSON', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -3535,7 +3626,11 @@ await test('/agent --format json produces valid JSON', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 123,
+   
     historyId: 5,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'Delegated to oracle.',
   });
@@ -3556,6 +3651,7 @@ await test('/agent --format json produces valid JSON', async () => {
 await test('/agent --format json with alias shows aliasUsed=true', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'arch',
     resolvedAgent: 'oracle',
     aliasUsed: true,
@@ -3563,7 +3659,11 @@ await test('/agent --format json with alias shows aliasUsed=true', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'OK',
   });
@@ -3576,6 +3676,7 @@ await test('/agent --format json with alias shows aliasUsed=true', async () => {
 await test('/agent --format json error returns structured error', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'unknown',
     resolvedAgent: 'unknown',
     aliasUsed: false,
@@ -3583,7 +3684,11 @@ await test('/agent --format json error returns structured error', async () => {
     runnerMode: 'prompt-only',
     status: 'error',
     durationMs: 0,
+   
     historyId: null,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     error: 'Agent "unknown" not found.',
     availableAgents: ['explorer', 'oracle'],
@@ -3599,6 +3704,7 @@ await test('/agent --format json error returns structured error', async () => {
 await test('/agent --format json disabled agent error', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'designer',
     resolvedAgent: 'designer',
     aliasUsed: false,
@@ -3606,7 +3712,11 @@ await test('/agent --format json disabled agent error', async () => {
     runnerMode: 'prompt-only',
     status: 'error',
     durationMs: 0,
+   
     historyId: null,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     error: 'Agent "designer" is disabled.',
   });
@@ -3618,6 +3728,7 @@ await test('/agent --format json disabled agent error', async () => {
 await test('/agent --format json output sanitizes API keys', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -3625,7 +3736,11 @@ await test('/agent --format json output sanitizes API keys', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 50,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'API key: sk-1234567890abcdefghijk is valid',
   });
@@ -3638,6 +3753,7 @@ await test('/agent --format json does not include full prompt', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const longPrompt = 'A'.repeat(5000);
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -3645,7 +3761,11 @@ await test('/agent --format json does not include full prompt', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 50,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: longPrompt,
   });
@@ -3658,6 +3778,7 @@ await test('/agent --format json does not include full prompt', async () => {
 await test('/agent --format json includes historyId and replayOf', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -3666,7 +3787,11 @@ await test('/agent --format json includes historyId and replayOf', async () => {
     status: 'success',
     durationMs: 100,
     historyId: 12,
+   
     replayOf: 5,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'Done',
   });
@@ -3678,6 +3803,7 @@ await test('/agent --format json includes historyId and replayOf', async () => {
 await test('/agent --format json with provider-call mode', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -3685,7 +3811,11 @@ await test('/agent --format json with provider-call mode', async () => {
     runnerMode: 'provider-call',
     status: 'success',
     durationMs: 200,
+   
     historyId: 3,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: true,
     output: 'Model response here',
   });
@@ -3698,6 +3828,7 @@ await test('/agent --format json with provider-call mode', async () => {
 await test('/agent --format json fallback status', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -3705,7 +3836,11 @@ await test('/agent --format json fallback status', async () => {
     runnerMode: 'provider-call',
     status: 'fallback',
     durationMs: 50,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: true,
     error: 'Provider-call unavailable',
   });
@@ -4025,9 +4160,86 @@ await test('invalid regex + --format json returns error JSON via formatErrorJson
   assert.equal(parsed.error.code, 'INVALID_REGEX');
 });
 
+// D1-fix: new execution metadata fields in agentResult JSON
+await test('/agent --format json includes executed=false for prompt-only', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'explorer',
+    resolvedAgent: 'explorer',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 50,
+    historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
+    note: 'Prompt-only delegation: no tools were executed.',
+    providerCallAvailable: false,
+    output: 'Delegated to explorer.',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.executed, false, 'executed should be false in prompt-only JSON');
+  assert.equal(parsed.toolsExecuted, false, 'toolsExecuted should be false in prompt-only JSON');
+  assert.equal(parsed.childSessionStarted, false, 'childSessionStarted should be false');
+  assert.equal(parsed.runnerMode, 'prompt-only');
+  assert.ok(parsed.note?.includes('no tools'), 'note should be in JSON');
+});
+
+await test('/agent --format json includes note field when provided', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'deep',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 2,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
+    note: 'Prompt-only delegation: use the main agent to search manually.',
+    providerCallAvailable: false,
+    output: 'Delegated to oracle.',
+  });
+  const parsed = JSON.parse(json);
+  assert.ok(parsed.note, 'note field should be present in JSON');
+  assert.equal(parsed.note, 'Prompt-only delegation: use the main agent to search manually.');
+});
+
+await test('/agent --format json does not imply toolsExecuted=true in prompt-only', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'explorer',
+    resolvedAgent: 'explorer',
+    aliasUsed: false,
+    mode: 'quick',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 10,
+    historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
+    note: 'Prompt-only.',
+    providerCallAvailable: false,
+    output: 'OK',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.executed, false);
+  assert.equal(parsed.toolsExecuted, false);
+  assert.equal(parsed.childSessionStarted, false);
+  // Should not contain any indication that tools were actually run
+  assert.ok(!parsed.output.text.includes('path:'));
+});
+
 await test('formatAgentsJson provider-call field in agentResult', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -4035,7 +4247,11 @@ await test('formatAgentsJson provider-call field in agentResult', async () => {
     runnerMode: 'provider-call',
     status: 'fallback',
     durationMs: 50,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     error: 'fallback',
   });
@@ -4048,6 +4264,7 @@ await test('formatAgentsJson provider-call field in agentResult', async () => {
 await test('formatAgentsJson task field in agentResult', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -4055,7 +4272,11 @@ await test('formatAgentsJson task field in agentResult', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'result text',
     taskSummary: 'review this design',
@@ -4069,6 +4290,7 @@ await test('formatAgentsJson task field in agentResult', async () => {
 await test('formatAgentResultJson taskSummary is used, not requestedAgent', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'arch',  // alias
     resolvedAgent: 'oracle',
     aliasUsed: true,
@@ -4076,7 +4298,11 @@ await test('formatAgentResultJson taskSummary is used, not requestedAgent', asyn
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'result',
     taskSummary: 'review this design',
@@ -4095,6 +4321,7 @@ await test('formatAgentResultJson taskSummary defaults to requestedAgent for bac
   const { formatAgentResultJson } = await import('../src/format.js');
   // Don't pass taskSummary - should fall back to requestedAgent
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -4102,7 +4329,11 @@ await test('formatAgentResultJson taskSummary defaults to requestedAgent for bac
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'result',
   });
@@ -4115,6 +4346,7 @@ await test('formatAgentResultJson long taskSummary is truncated', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const longTask = 'A'.repeat(300);
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -4122,7 +4354,11 @@ await test('formatAgentResultJson long taskSummary is truncated', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'result',
     taskSummary: longTask,
@@ -4137,6 +4373,7 @@ await test('formatAgentResultJson long taskSummary is truncated', async () => {
 await test('formatAgentsJson output text field', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -4144,7 +4381,11 @@ await test('formatAgentsJson output text field', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'delegation prompt text',
   });
@@ -4156,6 +4397,7 @@ await test('formatAgentsJson output text field', async () => {
 await test('agentResult JSON does not contain API key fields', async () => {
   const { formatAgentResultJson } = await import('../src/format.js');
   const json = formatAgentResultJson({
+
     requestedAgent: 'oracle',
     resolvedAgent: 'oracle',
     aliasUsed: false,
@@ -4163,7 +4405,11 @@ await test('agentResult JSON does not contain API key fields', async () => {
     runnerMode: 'prompt-only',
     status: 'success',
     durationMs: 100,
+   
     historyId: 1,
+    executed: false,
+    toolsExecuted: false,
+    childSessionStarted: false,
     providerCallAvailable: false,
     output: 'apiKey=sk-1234567890abcdefghijk',
   });
