@@ -201,6 +201,55 @@
 - [x] Updated `docs/provider-call.md` with M11 roadmap
 - [x] Updated README with /agent --format json, metadata, privacy notes, standalone JSON commands
 
+## v0.1.0 — M12: Prompt Tuning / Lightweight Eval Examples
+
+**Improving agent prompts and establishing a lightweight eval system.**
+
+- [x] `examples/prompt-evals/` directory with human-readable eval cases for all built-in agents
+- [x] `examples/prompt-evals/template-evals.md` covering all 7 templates
+- [x] `docs/prompt-tuning.md` with prompt quality checklist and per-agent failure modes
+- [x] Static prompt eval checker (`scripts/check-prompt-evals.ts`):
+  - Eval file existence check (6 agent + template evals)
+  - Minimum 3 cases per agent
+  - Required fields: Agent, Task, Expected behavior
+  - Agent files non-empty and have boundary constraints
+  - prompt-tuning.md checklist presence
+- [x] Built-in agent prompt tightening:
+  - explorer: Reduced scope creep, clearer output format, file:line evidence requirement
+  - oracle: Verdict-first output, bounded length, no abstract advice without recommendation
+  - fixer: Scope enforcement, no claim of modifications in prompt-only mode
+  - librarian: Source citation requirement, distinction between official docs and tutorials
+  - designer: Actionable guidance, project design system awareness
+  - orchestrator: Delegation restraint, routing precision
+- [x] `pnpm test:prompts` integrated into CI and `pnpm test`
+- [x] M9 feedback incorporated into prompt refinements
+
+## v0.1.0 — M13: Release Hardening / v0.1.0 Readiness
+
+**Completing the release package and hardening for v0.1.0 publication.**
+
+- [x] Package hardening:
+  - `.npmignore` to exclude dev-only files
+  - `.gitignore` with node_modules, dist, history.jsonl, Python temp files
+  - `scripts/check-package.ts` validating all package contents
+  - 13-point package check covering dist, agents, templates, skills, docs, examples, README, CHANGELOG, LICENSE, .gitignore
+- [x] README / CHANGELOG / release docs:
+  - `docs/release.md` with complete pre-release checklist, publishing, rollback
+  - `docs/provider-call.md` with full investigation and architectural status
+  - Status table with ✅/⚠️ indicators for feature clarity
+  - "What this is NOT" section clarifying non-scope
+  - Current Limitations section explicitly listing v0.1.0 exclusions
+- [x] GitHub Actions CI pipeline:
+  - Runs on push and pull_request to main/master
+  - Covers: typecheck → build → test:agents → test:prompts → check:package → pack:dry
+  - Uses pnpm v9 with corepack
+  - Caches pnpm store
+- [x] `pnpm release:check` chain: typecheck + build + test + check:package + pack:dry
+- [x] `prepublishOnly` hook preventing accidental publish without verification
+- [x] Multi-round code review completed (R0–R6) covering package, extension integration, agent/template loading, command parsing, runner/history/metrics, tests/edge cases, documentation/UX
+- [x] 362+ tests covering all core functionality
+- [x] Provider-call remains "architectural only" — prompt-only is the stable default for v0.1.0
+
 ## v0.3.0 — Planned
 
 **Enhanced delegation and agent capabilities.**

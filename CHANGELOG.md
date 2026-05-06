@@ -87,4 +87,4 @@ All notable changes to this project will be documented in this file.
 
 ## Prior Milestones
 
-See [docs/roadmap.md](docs/roadmap.md) for milestone history (M2–M12).
+See [docs/roadmap.md](docs/roadmap.md) for milestone history (M2–M13).

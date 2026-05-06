@@ -137,6 +137,8 @@ Each JSON output includes a top-level envelope:
 | `history` | Delegation history records |
 | `metrics` | Delegation metrics summary |
 | `validation` | Agent validation results |
+| `agentResult` | Delegation result from /agent command (success or error) |
+| `error` | Format/regex validation error response |
 
 ### schemaVersion Compatibility
 

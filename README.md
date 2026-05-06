@@ -4,9 +4,9 @@ Lightweight specialist agents for [pi-mono](https://github.com/mariozechner/pi-c
 
 ## Status
 
-**v0.1.0 — Release Ready (M13)**
+**v0.1.0 — Release Candidate**
 
-This is the first public release of pi-slim-agents. The core delegation system is functional and stable.
+This is the first release of pi-slim-agents. The core delegation system is functional and ready for use. npm publication is pending.
 
 | Feature | Status |
 |---------|--------|
@@ -48,6 +48,14 @@ It is a lightweight specialist delegation layer that helps the main agent call f
 
 ## Installation
 
+### From npm (after release)
+
+```bash
+pi install npm:@0xnayuta/pi-slim-agents
+```
+
+> **Note**: npm publication is pending. After release, the command above will work.
+
 ### Local development
 
 ```bash
@@ -55,19 +63,6 @@ pnpm install
 pnpm build
 pi install /path/to/pi-slim-agents
 ```
-
-### npm (after release)
-
-```bash
-pi install npm:@0xnayuta/pi-slim-agents
-```
-
-Or install with pnpm:
-```bash
-pi install npm:@0xnayuta/pi-slim-agents
-```
-
-> **Note**: npm publication is pending. After release, the command above will work.
 
 ### Verify installation
 
@@ -399,4 +394,4 @@ MIT — see [LICENSE](LICENSE).
 
 Inspired by [oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim).
 
-**Important**: This project is NOT an OpenCode plugin. It does not port the full OpenCode runtime. It only借鉴轻量专家角色设计思想，并重写为 pi-mono extension for the pi-coding-agent ecosystem.
+**Important**: This project is NOT an OpenCode plugin and does not port the full oh-my-opencode-slim runtime. It only adapts the lightweight specialist-agent design idea and rewrites it as a pi-mono extension.
