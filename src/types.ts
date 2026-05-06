@@ -6,6 +6,21 @@
 
 // ─── Agent Definition ──────────────────────────────────────────────
 
+/**
+ * File-level metadata for an agent or template file.
+ * Collected via fs.stat at load time. Fields may be null if stat fails.
+ */
+export interface FileMetadata {
+  /** Absolute or relative path to the source file. */
+  sourcePath: string;
+  /** File creation time (ISO 8601). May be null on some platforms/filesystems. */
+  createdAt: string | null;
+  /** Last modification time (ISO 8601). */
+  lastModified: string | null;
+  /** File size in bytes. */
+  sizeBytes: number | null;
+}
+
 /** Parsed frontmatter from an agent .md file. */
 export interface AgentFrontmatter {
   name?: string;
@@ -52,6 +67,8 @@ export interface AgentDefinition {
   source?: AgentSource;
   /** Recommended delegation mode (quick/normal/deep). */
   recommendedMode?: string;
+  /** File-level metadata (createdAt, lastModified, sizeBytes). */
+  metadata?: FileMetadata | null;
 }
 
 // ─── Configuration ─────────────────────────────────────────────────

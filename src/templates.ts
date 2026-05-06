@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import type { AgentDefinition, AgentFrontmatter, SlimAgentsConfig } from './types.js';
+import type { AgentDefinition, AgentFrontmatter, FileMetadata, SlimAgentsConfig } from './types.js';
 import {
   parseAgentFrontmatter,
   isSafeAgentName,
@@ -21,6 +21,7 @@ import {
 } from './utils.js';
 import { loadConfig } from './config.js';
 import { loadAgents } from './agents.js';
+import { collectFileMetadata } from './metadata.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -33,6 +34,8 @@ export interface TemplateInfo {
   recommendedMode: string;
   filePath: string;
   tags: string[];
+  /** File-level metadata (createdAt, lastModified, sizeBytes). */
+  metadata?: FileMetadata | null;
 }
 
 export interface TemplateLoadResult {
@@ -124,6 +127,7 @@ export function loadTemplates(): TemplateLoadResult {
           tags: Array.isArray(fm.tags)
             ? fm.tags.filter((t): t is string => typeof t === 'string')
             : [],
+          metadata: collectFileMetadata(filePath),
         });
       } catch (err) {
         // Skip unreadable files

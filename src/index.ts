@@ -61,10 +61,15 @@ import {
   parseRegexOption,
   formatAgentsJson,
   formatTemplatesJson,
+  formatTemplatesJsonFull,
   formatStatusJson,
   formatHistoryJson,
   formatMetricsJson,
   formatValidationJson,
+  formatAgentResultJson,
+  formatErrorJson,
+  serializeAgentFilters,
+  serializeTemplateFilters,
 } from './format.js';
 import type { DelegateAgentParams, RunnerMode, SlimAgentsConfig } from './types.js';
 import * as fs from 'node:fs';
@@ -361,7 +366,11 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
     if (format === 'json') {
       const filtered = filterTemplates(asFilterable, filter);
-      ctx.ui.notify(formatTemplatesJson(filtered, filter), 'info');
+      // Map back to full template info for metadata
+      const filteredWithMetadata = result.templates.filter(t =>
+        filtered.some(f => f.name === t.name),
+      );
+      ctx.ui.notify(formatTemplatesJsonFull(filteredWithMetadata, filter), 'info');
       return;
     }
 
@@ -633,21 +642,49 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
   // ── /agent shortcut command ─────────────────────────────────────
 
   pi.registerCommand('agent', {
-    description: 'Quick delegation: /agent [--mode <mode>] <agent-or-alias> <task...>',
+    description: 'Quick delegation: /agent [--mode <mode>] [--format <format>] <agent-or-alias> <task...>',
     handler: async (args, ctx) => {
-      const { agent: agentName, task, mode, modeError } = parseAgentCommand(args ?? '');
+      // Parse format flag from args (before parseAgentCommand)
+      const { flags, positional } = parseFlags(args ?? '');
+      const { format, error: formatError } = parseFormatOption(flags);
+
+      if (formatError && format === 'json') {
+        ctx.ui.notify(formatErrorJson('INVALID_FORMAT', formatError), 'error');
+        return;
+      }
+
+      const reconstructedArgs = positional.join(' ');
+      const { agent: agentName, task, mode, modeError } = parseAgentCommand(reconstructedArgs);
 
       if (modeError) {
+        if (format === 'json') {
+          ctx.ui.notify(formatErrorJson('INVALID_MODE', modeError), 'error');
+          return;
+        }
         ctx.ui.notify(`❌ ${modeError}`, 'error');
         return;
       }
 
       if (!agentName) {
+        if (format === 'json') {
+          ctx.ui.notify(
+            formatErrorJson('MISSING_AGENT', 'Usage: /agent [--mode <mode>] [--format <format>] <agent-or-alias> <task...>'),
+            'error',
+          );
+          return;
+        }
         ctx.ui.notify(buildAgentHelpText(), 'info');
         return;
       }
 
       if (!task) {
+        if (format === 'json') {
+          ctx.ui.notify(
+            formatErrorJson('MISSING_TASK', `Usage: /agent [--mode <mode>] [--format <format>] <agent-or-alias> <task...>. Missing task for agent "${agentName}".`),
+            'error',
+          );
+          return;
+        }
         ctx.ui.notify(buildAgentHelpText(), 'info');
         return;
       }
@@ -659,8 +696,29 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
       const allAgents = loadAgents(cwd, config);
       const { resolveAgentName } = await import('./agents.js');
       const resolvedName = resolveAgentName(agentName, allAgents);
+      const aliasUsed = agentName !== resolvedName && resolvedName !== null;
+      const availableAgentNames = allAgents.filter(a => a.enabled).map(a => a.name);
 
       if (!resolvedName) {
+        if (format === 'json') {
+          ctx.ui.notify(
+            formatAgentResultJson({
+              requestedAgent: agentName,
+              resolvedAgent: agentName,
+              aliasUsed: false,
+              mode: mode ?? 'normal',
+              runnerMode: config.runnerMode ?? 'prompt-only',
+              status: 'error',
+              durationMs: 0,
+              historyId: null,
+              providerCallAvailable: providerCallStatus?.available ?? false,
+              error: `Agent "${agentName}" not found.`,
+              availableAgents: availableAgentNames,
+            }),
+            'error',
+          );
+          return;
+        }
         ctx.ui.notify(
           `❌ Agent "${agentName}" not found.\n\n${buildAvailableAgentsList(cwd, config)}`,
           'error',
@@ -670,6 +728,25 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
 
       const agent = allAgents.find(a => a.name === resolvedName);
       if (agent && !agent.enabled) {
+        if (format === 'json') {
+          ctx.ui.notify(
+            formatAgentResultJson({
+              requestedAgent: agentName,
+              resolvedAgent: resolvedName,
+              aliasUsed,
+              mode: mode ?? 'normal',
+              runnerMode: config.runnerMode ?? 'prompt-only',
+              status: 'error',
+              durationMs: 0,
+              historyId: null,
+              providerCallAvailable: providerCallStatus?.available ?? false,
+              error: `Agent "${resolvedName}" is disabled. Enable it in .pi/slim-agents.json.`,
+              availableAgents: availableAgentNames,
+            }),
+            'error',
+          );
+          return;
+        }
         const viaAlias = agentName !== resolvedName ? ` (via alias "${agentName}")` : '';
         ctx.ui.notify(
           `❌ Agent "${resolvedName}"${viaAlias} is disabled. Enable it in .pi/slim-agents.json.\n\n${buildAvailableAgentsList(cwd, config)}`,
@@ -677,6 +754,9 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         );
         return;
       }
+
+      const startTime = Date.now();
+      const runnerMode: 'prompt-only' | 'provider-call' = config.runnerMode ?? 'prompt-only';
 
       // Run delegation
       const result = await runAndRecordDelegation(
@@ -686,12 +766,62 @@ export default function slimAgentsExtension(pi: ExtensionAPI): void {
         providerCallStatus?.available ?? false,
       );
 
+      const durationMs = Date.now() - startTime;
+      const historyId = historyStore.count() > 0 ? historyStore.recent(1)[0]?.id ?? null : null;
+      const lastRecord = historyStore.recent(1)[0];
+      const effectiveHistoryId = lastRecord?.id ?? null;
+      const effectiveReplayOf = lastRecord?.replayOf ?? null;
+
       if (!result.ok) {
+        if (format === 'json') {
+          ctx.ui.notify(
+            formatAgentResultJson({
+              requestedAgent: agentName,
+              resolvedAgent: resolvedName,
+              aliasUsed,
+              mode: mode ?? 'normal',
+              runnerMode,
+              status: 'error',
+              durationMs,
+              historyId: effectiveHistoryId,
+              replayOf: effectiveReplayOf,
+              providerCallAvailable: providerCallStatus?.available ?? false,
+              error: result.error ?? 'Unknown error',
+              availableAgents: availableAgentNames,
+            }),
+            'error',
+          );
+          return;
+        }
         ctx.ui.notify(`❌ ${result.error}`, 'error');
         return;
       }
 
       const output = result.providerOutput ?? result.prompt;
+      const status = result.providerOutput
+        ? 'success'
+        : 'success';
+
+      if (format === 'json') {
+        ctx.ui.notify(
+          formatAgentResultJson({
+            requestedAgent: agentName,
+            resolvedAgent: resolvedName,
+            aliasUsed,
+            mode: mode ?? 'normal',
+            runnerMode,
+            status,
+            durationMs,
+            historyId: effectiveHistoryId,
+            replayOf: effectiveReplayOf,
+            providerCallAvailable: providerCallStatus?.available ?? false,
+            output,
+          }),
+          'info',
+        );
+        return;
+      }
+
       ctx.ui.notify(output, 'info');
     },
   });

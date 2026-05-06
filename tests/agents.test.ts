@@ -3480,6 +3480,514 @@ await test('formatAgentsJson regex filter shows pattern in filters', async () =>
 });
 
 
+// ─── M11: JSON / Metadata / Agent Result ────────────────────────────
+
+console.log('\nM11: JSON / Metadata / Agent Result');
+
+// Task 1: /agent --format json
+await test('/agent --format json produces valid JSON', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'deep',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 123,
+    historyId: 5,
+    providerCallAvailable: false,
+    output: 'Delegated to oracle.',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'agentResult');
+  assert.equal(parsed.resolvedAgent, 'oracle');
+  assert.equal(parsed.aliasUsed, false);
+  assert.equal(parsed.mode, 'deep');
+  assert.equal(parsed.runnerMode, 'prompt-only');
+  assert.equal(parsed.status, 'success');
+  assert.equal(parsed.durationMs, 123);
+  assert.equal(parsed.historyId, 5);
+  assert.equal(typeof parsed.providerCall === 'object', true);
+  assert.equal(parsed.providerCall.available, false);
+});
+
+await test('/agent --format json with alias shows aliasUsed=true', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'arch',
+    resolvedAgent: 'oracle',
+    aliasUsed: true,
+    mode: 'deep',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'OK',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.requestedAgent, 'arch');
+  assert.equal(parsed.resolvedAgent, 'oracle');
+  assert.equal(parsed.aliasUsed, true);
+});
+
+await test('/agent --format json error returns structured error', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'unknown',
+    resolvedAgent: 'unknown',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'error',
+    durationMs: 0,
+    historyId: null,
+    providerCallAvailable: false,
+    error: 'Agent "unknown" not found.',
+    availableAgents: ['explorer', 'oracle'],
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.status, 'error');
+  assert.equal(parsed.error.code, 'UNKNOWN_AGENT');
+  assert.equal(parsed.error.message, 'Agent "unknown" not found.');
+  assert.deepEqual(parsed.error.availableAgents, ['explorer', 'oracle']);
+  assert.equal(parsed.output, null);
+});
+
+await test('/agent --format json disabled agent error', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'designer',
+    resolvedAgent: 'designer',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'error',
+    durationMs: 0,
+    historyId: null,
+    providerCallAvailable: false,
+    error: 'Agent "designer" is disabled.',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.status, 'error');
+  assert.equal(parsed.error.code, 'AGENT_DISABLED');
+});
+
+await test('/agent --format json output sanitizes API keys', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 50,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'API key: sk-1234567890abcdefghijk is valid',
+  });
+  const parsed = JSON.parse(json);
+  assert.ok(!parsed.output.text.includes('sk-1234567890abcdefghijk'));
+  assert.ok(parsed.output.text.includes('[API_KEY_REDACTED]'));
+});
+
+await test('/agent --format json does not include full prompt', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const longPrompt = 'A'.repeat(5000);
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 50,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: longPrompt,
+  });
+  const parsed = JSON.parse(json);
+  // output text should be included (it's the delegation prompt or result text)
+  // but the format itself doesn't include a separate 'prompt' field
+  assert.equal(parsed.prompt, undefined);
+});
+
+await test('/agent --format json includes historyId and replayOf', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'deep',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 12,
+    replayOf: 5,
+    providerCallAvailable: false,
+    output: 'Done',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.historyId, 12);
+  assert.equal(parsed.replayOf, 5);
+});
+
+await test('/agent --format json with provider-call mode', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'provider-call',
+    status: 'success',
+    durationMs: 200,
+    historyId: 3,
+    providerCallAvailable: true,
+    output: 'Model response here',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.runnerMode, 'provider-call');
+  assert.equal(parsed.providerCall.available, true);
+  assert.equal(parsed.output.format, 'provider-call');
+});
+
+await test('/agent --format json fallback status', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'provider-call',
+    status: 'fallback',
+    durationMs: 50,
+    historyId: 1,
+    providerCallAvailable: true,
+    error: 'Provider-call unavailable',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.status, 'fallback');
+  assert.equal(parsed.providerCall.fallback, true);
+  assert.equal(parsed.providerCall.reason, 'Provider-call unavailable, fallback to prompt-only');
+});
+
+// Task 2: filters JSON serialization with null for unset
+await test('serializeAgentFilters uses null for unset filters', async () => {
+  const { serializeAgentFilters } = await import('../src/format.js');
+  const filters = serializeAgentFilters({});
+  assert.equal(filters.tags, null);
+  assert.equal(filters.query, null);
+  assert.equal(filters.readonly, null);
+  assert.equal(filters.writable, null);
+  assert.equal(filters.enabled, null);
+  assert.equal(filters.disabled, null);
+  assert.equal(filters.source, null);
+  assert.equal(filters.regex, null);
+});
+
+await test('serializeAgentFilters includes set values', async () => {
+  const { serializeAgentFilters } = await import('../src/format.js');
+  const filters = serializeAgentFilters({
+    tags: ['review'],
+    query: 'cpp',
+    readonly: true,
+    source: 'builtin',
+    regex: new RegExp('review|cpp', 'i'),
+  });
+  assert.deepEqual(filters.tags, ['review']);
+  assert.equal(filters.query, 'cpp');
+  assert.equal(filters.readonly, true);
+  assert.equal(filters.source, 'builtin');
+  assert.equal(filters.regex, 'review|cpp');
+  assert.equal(filters.writable, null);
+  assert.equal(filters.enabled, null);
+  assert.equal(filters.disabled, null);
+});
+
+await test('formatAgentsJson filters use null for unset', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.filters.tags, null);
+  assert.equal(parsed.filters.query, null);
+  assert.equal(parsed.filters.regex, null);
+});
+
+await test('formatAgentsJson regex serialized as string', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, { regex: new RegExp('^oracle$') });
+  const parsed = JSON.parse(json);
+  assert.equal(typeof parsed.filters.regex, 'string');
+  assert.equal(parsed.filters.regex, '^oracle$');
+  // Should not be a RegExp object in JSON
+  assert.equal(typeof parsed.filters.regex, 'string');
+});
+
+await test('formatHistoryJson filters use null for unset', async () => {
+  const { formatHistoryJson } = await import('../src/format.js');
+  historyStore.clear();
+  historyStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+  const json = formatHistoryJson(historyStore.recent(10));
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.filters.agent, null);
+  assert.equal(parsed.filters.status, null);
+  assert.equal(parsed.filters.limit, null);
+  historyStore.clear();
+});
+
+await test('formatErrorJson produces valid error JSON', async () => {
+  const { formatErrorJson } = await import('../src/format.js');
+  const json = formatErrorJson('INVALID_REGEX', 'Invalid pattern', { pattern: '[' });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'error');
+  assert.equal(parsed.error.code, 'INVALID_REGEX');
+  assert.equal(parsed.error.message, 'Invalid pattern');
+  assert.equal(parsed.error.details.pattern, '[');
+});
+
+// Task 3: metadata
+await test('collectFileMetadata returns valid structure', async () => {
+  const { collectFileMetadata } = await import('../src/metadata.js');
+  const meta = collectFileMetadata(PROJECT_ROOT + '/agents/oracle.md');
+  assert.ok(meta.sourcePath.includes('oracle.md'));
+  assert.ok(meta.lastModified === null || typeof meta.lastModified === 'string');
+  assert.ok(meta.sizeBytes === null || typeof meta.sizeBytes === 'number');
+  // createdAt may be null on some platforms
+  assert.ok(meta.createdAt === null || typeof meta.createdAt === 'string');
+});
+
+await test('collectFileMetadata stat failure is non-fatal', async () => {
+  const { collectFileMetadata } = await import('../src/metadata.js');
+  const meta = collectFileMetadata('/nonexistent/path/xyz.md');
+  assert.equal(meta.lastModified, null);
+  assert.equal(meta.sizeBytes, null);
+  assert.equal(meta.createdAt, null);
+});
+
+await test('loaded agent includes metadata', async () => {
+  const allAgents = loadAgents(PROJECT_ROOT, {});
+  const oracle = allAgents.find(a => a.name === 'oracle');
+  assert.ok(oracle, 'oracle should be loaded');
+  assert.ok(oracle.metadata, 'oracle should have metadata');
+  assert.ok(oracle.metadata.sourcePath, 'metadata should have sourcePath');
+  assert.ok(oracle.metadata.lastModified, 'metadata should have lastModified');
+  assert.ok(typeof oracle.metadata.lastModified === 'string');
+  assert.ok(oracle.metadata.sizeBytes, 'metadata should have sizeBytes');
+  assert.ok(typeof oracle.metadata.sizeBytes === 'number');
+  // createdAt may be null on some platforms/filesystems
+  assert.ok(oracle.metadata.createdAt === null || typeof oracle.metadata.createdAt === 'string');
+});
+
+await test('loaded template includes metadata', async () => {
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  const security = result.templates.find(t => t.name === 'security-reviewer');
+  assert.ok(security, 'security-reviewer template should exist');
+  assert.ok(security.metadata, 'template should have metadata');
+  assert.ok(security.metadata.lastModified, 'metadata should have lastModified');
+  assert.ok(typeof security.metadata.lastModified === 'string');
+  assert.ok(security.metadata.sizeBytes, 'metadata should have sizeBytes');
+  assert.ok(typeof security.metadata.sizeBytes === 'number');
+});
+
+await test('/agents --format json includes metadata', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  assert.ok(parsed.items.length > 0);
+  for (const item of parsed.items) {
+    assert.ok(item.metadata, 'item should have metadata');
+    assert.equal(typeof item.metadata.sourcePath, 'string');
+    assert.ok(item.metadata.lastModified === null || typeof item.metadata.lastModified === 'string');
+    assert.ok(item.metadata.sizeBytes === null || typeof item.metadata.sizeBytes === 'number');
+    assert.ok(item.metadata.createdAt === null || typeof item.metadata.createdAt === 'string');
+  }
+});
+
+await test('/agents templates --format json includes metadata', async () => {
+  const { formatTemplatesJsonFull } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  const json = formatTemplatesJsonFull(result.templates, {});
+  const parsed = JSON.parse(json);
+  assert.ok(parsed.items.length > 0);
+  for (const item of parsed.items) {
+    assert.ok(item.metadata, 'item should have metadata');
+    assert.equal(typeof item.metadata.sourcePath, 'string');
+    assert.ok(item.metadata.lastModified === null || typeof item.metadata.lastModified === 'string');
+    assert.ok(item.metadata.sizeBytes === null || typeof item.metadata.sizeBytes === 'number');
+  }
+});
+
+await test('metadata sizeBytes is number or null', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  for (const item of parsed.items) {
+    assert.ok(typeof item.metadata.sizeBytes === 'number' || item.metadata.sizeBytes === null);
+    assert.ok(item.metadata.sizeBytes === null || item.metadata.sizeBytes > 0);
+  }
+});
+
+await test('metadata dates are ISO strings or null', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  for (const item of parsed.items) {
+    if (item.metadata.lastModified) {
+      // Should be valid ISO date
+      const d = new Date(item.metadata.lastModified);
+      assert.ok(!isNaN(d.getTime()), `lastModified should be valid ISO: ${item.metadata.lastModified}`);
+    }
+    if (item.metadata.createdAt) {
+      const d = new Date(item.metadata.createdAt);
+      assert.ok(!isNaN(d.getTime()), `createdAt should be valid ISO: ${item.metadata.createdAt}`);
+    }
+  }
+});
+
+await test('formatAgentsJson metadata null when stat fails', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  // Create a mock agent with null metadata
+  const mockAgents = agents.map(a => ({ ...a, metadata: null }));
+  const json = formatAgentsJson(mockAgents as any, {});
+  const parsed = JSON.parse(json);
+  for (const item of parsed.items) {
+    assert.equal(item.metadata, null);
+  }
+});
+
+// Task 4: formatAgentsJson includes all filter fields with null
+await test('formatAgentsJson all filter fields present with null', async () => {
+  const { formatAgentsJson } = await import('../src/format.js');
+  const json = formatAgentsJson(agents, {});
+  const parsed = JSON.parse(json);
+  assert.ok('tags' in parsed.filters);
+  assert.ok('query' in parsed.filters);
+  assert.ok('readonly' in parsed.filters);
+  assert.ok('writable' in parsed.filters);
+  assert.ok('enabled' in parsed.filters);
+  assert.ok('disabled' in parsed.filters);
+  assert.ok('source' in parsed.filters);
+  assert.ok('regex' in parsed.filters);
+});
+
+await test('formatTemplatesJson all filter fields present with null', async () => {
+  const { formatTemplatesJson } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  const asFilterable = result.templates.map(t => ({
+    name: t.name, description: t.description, readonly: t.readonly,
+    aliases: t.aliases, tags: t.tags, recommendedMode: t.recommendedMode,
+  }));
+  const json = formatTemplatesJson(asFilterable, {});
+  const parsed = JSON.parse(json);
+  assert.ok('tags' in parsed.filters);
+  assert.ok('query' in parsed.filters);
+  assert.ok('readonly' in parsed.filters);
+  assert.ok('writable' in parsed.filters);
+  assert.ok('regex' in parsed.filters);
+});
+
+await test('invalid regex + --format json returns error JSON via formatErrorJson', async () => {
+  const { formatErrorJson, parseRegexOption } = await import('../src/format.js');
+  const { regex, error } = parseRegexOption({ regex: '[' });
+  assert.equal(regex, null);
+  assert.ok(error?.includes('Invalid regex pattern'));
+  const json = formatErrorJson('INVALID_REGEX', error!, { pattern: '[' });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.schemaVersion, 1);
+  assert.equal(parsed.kind, 'error');
+  assert.equal(parsed.error.code, 'INVALID_REGEX');
+});
+
+await test('formatAgentsJson provider-call field in agentResult', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'provider-call',
+    status: 'fallback',
+    durationMs: 50,
+    historyId: 1,
+    providerCallAvailable: false,
+    error: 'fallback',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.providerCall.available, false);
+  assert.equal(parsed.providerCall.fallback, true);
+  assert.equal(typeof parsed.providerCall.reason, 'string');
+});
+
+await test('formatAgentsJson task field in agentResult', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'deep',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'result text',
+  });
+  const parsed = JSON.parse(json);
+  assert.ok(parsed.task, 'should have task field');
+  assert.ok(typeof parsed.task.summary === 'string', 'task.summary should be string');
+});
+
+await test('formatAgentsJson output text field', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'delegation prompt text',
+  });
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.output.text, 'delegation prompt text');
+  assert.equal(parsed.output.format, 'text');
+});
+
+await test('agentResult JSON does not contain API key fields', async () => {
+  const { formatAgentResultJson } = await import('../src/format.js');
+  const json = formatAgentResultJson({
+    requestedAgent: 'oracle',
+    resolvedAgent: 'oracle',
+    aliasUsed: false,
+    mode: 'normal',
+    runnerMode: 'prompt-only',
+    status: 'success',
+    durationMs: 100,
+    historyId: 1,
+    providerCallAvailable: false,
+    output: 'apiKey=sk-1234567890abcdefghijk',
+  });
+  // The apiKey=... pattern is replaced with apiKey=[redacted]
+  assert.ok(!json.includes('sk-1234567890abcdefghijk'), 'should redact full API key');
+  assert.ok(!json.includes('apiKey=sk-'), 'should redact apiKey= prefix');
+  // The redaction should be present
+  assert.ok(json.includes('[redacted]'), 'should have redaction text');
+});
+
+
 // ─── Summary ────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);

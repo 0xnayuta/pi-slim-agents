@@ -4,23 +4,25 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M10) — Machine-readable Output / Regex Search / Scriptability.**
+**v0.1.0 (M11) — Agent Command JSON / Metadata / JSON Polish.**
 
 This release adds:
-- **`--format json`** — JSON output for all data commands (agents, templates, status, history, metrics, validate)
-- **`/agents --format json`** — JSON list of agents with applied filters
-- **`/agents templates --format json`** — JSON list of templates
-- **`/agents status --format json`** — JSON runtime status
-- **`/agents history --format json`** — JSON delegation history
-- **`/agents metrics --format json`** — JSON delegation metrics
-- **`/agents validate --format json`** — JSON validation results
-- **`/agents --regex <pattern>`** — Regex search (matches name, description, aliases, tags; case-insensitive)
-- **`/agents templates --regex <pattern>`** — Regex search for templates
-- All JSON outputs include `schemaVersion` and `kind` fields for forward compatibility
-- JSON outputs exclude API keys, full prompts, full results, and full task/context
-- Unified formatter layer (`src/format.ts`) separates text and JSON output
+- **`/agent --format json`** — JSON output for delegation results (success/error)
+- **`/agent --mode <mode> --format json`** — Mode + JSON combined
+- **`/agent --format json oracle review ...`** — JSON output for agent delegation
+- **`/agent --format json unknown task`** — Structured error JSON for unknown agents
+- **`/agent --format json disabled-agent task`** — Structured error for disabled agents
+- **Filters use `null` for unset fields** — Consistent serialization (tags/query/readonly/writable/enabled/disabled/source/regex)
+- **`/agents --format json` includes metadata** — `sourcePath`, `createdAt`, `lastModified`, `sizeBytes` per agent
+- **`/agents templates --format json` includes metadata** — Same fields for templates
+- **New `kind: agentResult`** — JSON response kind for /agent delegation results
+- **`kind: error`** — Structured error JSON for format/regex failures
+- **`serializeAgentFilters` / `serializeTemplateFilters`** — Reusable filter serialization utilities
+- **Source metadata enhancement** — All agents and templates include file stat metadata
+- **API key sanitization** — Delegation output JSON redacts API keys before serialization
+- **Non-fatal metadata collection** — Stat failures don't crash the extension; fields default to null
 
-### M10 does not add (see roadmap)
+### M11 does not add (see roadmap)
 - Real provider-call integration (still falls back to prompt-only)
 - Token usage tracking (still unavailable)
 - Tag autocomplete (future, requires pi-mono completion API)
@@ -83,6 +85,8 @@ All JSON outputs use a consistent envelope:
 | `history` | Delegation history records (id, timestamp, agent, status, duration, alias, replayOf) |
 | `metrics` | Delegation metrics (total, success/fallback/error counts, avg duration, per-agent, per-runnerMode) |
 | `validation` | Validation results (issues by type, checked counts, tags stats) |
+| `agentResult` | Delegation result from `/agent` command (success/error with metadata) |
+| `error` | Structured error from format/regex failures |
 
 ### JSON Privacy
 
@@ -109,9 +113,75 @@ All JSON outputs use a consistent envelope:
       "aliases": ["arch", "review", "judge"],
       "tags": ["architecture", "review", "readonly"],
       "source": "package",
-      "recommendedMode": "deep"
+      "recommendedMode": "deep",
+      "metadata": {
+        "sourcePath": "agents/oracle.md",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "lastModified": "2026-05-06T12:00:00.000Z",
+        "sizeBytes": 2048
+      }
     }
   ]
+}
+```
+
+### Example: /agent --format json
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "agentResult",
+  "requestedAgent": "arch",
+  "resolvedAgent": "oracle",
+  "aliasUsed": true,
+  "mode": "deep",
+  "runnerMode": "prompt-only",
+  "status": "success",
+  "durationMs": 123,
+  "historyId": 12,
+  "replayOf": null,
+  "providerCall": {
+    "available": false,
+    "fallback": false,
+    "reason": "Provider-call not available in this environment"
+  },
+  "task": {
+    "summary": "arch"
+  },
+  "output": {
+    "text": "Delegated to oracle...",
+    "format": "text"
+  }
+}
+```
+
+**Error example:**
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "agentResult",
+  "requestedAgent": "unknown",
+  "resolvedAgent": "unknown",
+  "aliasUsed": false,
+  "mode": "normal",
+  "runnerMode": "prompt-only",
+  "status": "error",
+  "durationMs": 0,
+  "historyId": null,
+  "replayOf": null,
+  "providerCall": {
+    "available": false,
+    "fallback": false,
+    "reason": "Provider-call not available in this environment"
+  },
+  "task": { "summary": "unknown" },
+  "output": null,
+  "error": {
+    "code": "UNKNOWN_AGENT",
+    "message": "Agent \"unknown\" not found.",
+    "availableAgents": ["explorer", "oracle", "fixer", "designer", "librarian", "orchestrator"]
+  }
 }
 ```
 
@@ -312,6 +382,16 @@ The `/agent` command lets users directly call a specialist agent:
 /agent --mode normal designer review the UI flow
 ```
 
+**With JSON output:**
+
+```text
+/agent --format json oracle review this design
+/agent --mode deep --format json arch review the architecture
+/agent --format json --mode quick search find playback code
+```
+
+The `--format` flag can appear before or after `--mode`. If both are present, `--mode` must come before the agent name.
+
 Modes:
 - `quick` — Fast, brief answers
 - `normal` — Balanced depth (default)
@@ -485,6 +565,23 @@ If the agent name is invalid or not found, the tool returns a clear error and li
 Shows runtime status: runner mode, provider-call availability, agent counts, config paths, and last reload time.
 
 Subcommand dispatch via `/agents status`. Standalone fallback: `/agents-status`
+
+### Standalone JSON Fallback Commands
+
+Standalone fallback commands are **not provided**. All commands support `--format json` natively:
+
+```text
+/agents --format json           # JSON list of agents
+/agents templates --format json # JSON list of templates
+/agents status --format json    # JSON status report
+/agents history --format json   # JSON delegation history
+/agents metrics --format json  # JSON delegation metrics
+/agents validate --format json # JSON validation results
+/agent --format json oracle review ... # JSON delegation result
+```
+
+The pi-mono command API supports flags reliably, so `/agents --format json` is the recommended approach. Fallback commands (e.g., `/agents-json`) would be redundant and are not implemented to avoid code duplication.
+
 
 ### Reload
 
@@ -927,6 +1024,14 @@ Use `/agents status` to check whether provider-call is available in your environ
 
 See [docs/provider-call.md](docs/provider-call.md) for the full investigation and candidate solutions.
 
+## JSON Privacy & Security Notes
+
+- **No API keys** — All JSON outputs (including `/agent --format json`) sanitize API key patterns before serialization
+- **No full prompts** — Agent `body` field is never included in JSON output
+- **No full task text** — History JSON only includes `taskSummary` (truncated)
+- **Metadata paths** — `metadata.sourcePath` may contain absolute paths for project/user-level agents. Use `/agents --format json` and process paths carefully in untrusted environments.
+- **Output sanitization** — `formatAgentResultJson` sanitizes `apiKey=sk-...` and `Bearer <token>` patterns before JSON output
+
 ## Current limitations
 
 This version intentionally does **not** support:
@@ -957,7 +1062,7 @@ pnpm test
 pnpm pack --dry-run
 ```
 
-The test suite uses `tsx` (no test framework). It covers 302 tests:
+The test suite uses `tsx` (no test framework). It covers 333 tests:
 - All 6 built-in agents load correctly
 - Frontmatter parsing (name, description, readonly, temperature, aliases, enabled, recommendedMode)
 - Invalid agent name rejection (spaces, slashes, path traversal, uppercase)

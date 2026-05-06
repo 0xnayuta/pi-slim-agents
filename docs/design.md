@@ -237,3 +237,100 @@ This separation ensures:
 2. Text formatters remain unchanged
 3. New output formats can be added without touching business logic
 4. Every formatter is independently testable
+
+## M11: Agent Result JSON / Metadata / JSON Polish
+
+### agentResult JSON Kind
+
+`/agent --format json` returns a new `kind: agentResult` JSON response:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "agentResult",
+  "requestedAgent": "arch",
+  "resolvedAgent": "oracle",
+  "aliasUsed": true,
+  "mode": "deep",
+  "runnerMode": "prompt-only",
+  "status": "success",
+  "durationMs": 123,
+  "historyId": 12,
+  "replayOf": null,
+  "providerCall": {
+    "available": false,
+    "fallback": false,
+    "reason": "Provider-call not available in this environment"
+  },
+  "task": { "summary": "arch" },
+  "output": { "text": "...", "format": "text" }
+}
+```
+
+**Design decisions:**
+- `historyId` and `replayOf` are included so scripts can correlate delegation results with history
+- `providerCall.reason` describes why provider-call is unavailable or why it fell back
+- `output.format` distinguishes prompt-only (`text`) from provider-call (`provider-call`)
+- Error responses use `error.code` (e.g., `UNKNOWN_AGENT`, `AGENT_DISABLED`, `INVALID_MODE`)
+- `availableAgents` is included in `UNKNOWN_AGENT` errors for scripting convenience
+
+### error JSON Kind
+
+Format/regex failures return `kind: error`:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "error",
+  "error": {
+    "code": "INVALID_REGEX",
+    "message": "Invalid regex pattern ...",
+    "details": { "pattern": "[" }
+  }
+}
+```
+
+### Filter Serialization (null for unset)
+
+All filter objects use `null` for unset fields, not `undefined`:
+
+```json
+{
+  "tags": null,
+  "query": null,
+  "readonly": true,
+  "writable": null,
+  "enabled": null,
+  "disabled": null,
+  "source": "builtin",
+  "regex": "review|cpp"
+}
+```
+
+This makes it safe for scripts to check `if (filters.tags !== null)` without type confusion.
+
+### Metadata Collection
+
+File-level metadata is collected at load time via `fs.statSync`:
+
+```typescript
+interface FileMetadata {
+  sourcePath: string;    // Absolute path
+  createdAt: string | null;  // ISO 8601 (may be null on Windows/older FS)
+  lastModified: string | null;  // ISO 8601
+  sizeBytes: number | null;  // bytes
+}
+```
+
+**Non-fatal design**: Stat failures log a warning and return null metadata fields. The extension never crashes due to metadata collection — agents/templates are still loaded.
+
+**birthtime caveat**: `createdAt` uses `fs.statSync().birthtime`. On Windows and some filesystems, `birthtime` may equal `mtime` for recently created files or may be earlier than 2000 (epoch fallback). The collector filters out dates before Jan 1, 2000 as invalid.
+
+### API Key Sanitization
+
+`formatAgentResultJson` runs output through `sanitizeJsonText()` before serialization:
+- `apiKey=sk-...` → `apiKey=[redacted]`
+- `sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` → `[API_KEY_REDACTED]`
+- `Bearer <token>` → `Bearer [TOKEN_REDACTED]`
+
+This prevents accidental API key leakage in JSON output even if the delegation prompt or result contains key-like strings.

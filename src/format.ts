@@ -12,9 +12,10 @@
  *   - All JSON formatters produce plain objects first, then serialize.
  *   - schemaVersion is included in every JSON response for forward compatibility.
  *   - No ANSI codes, no Markdown, no API keys in JSON output.
+ *   - Unset filters use null (not undefined) for consistent serialization.
  */
 
-import type { AgentDefinition, DelegationRecord } from './types.js';
+import type { AgentDefinition, DelegationRecord, DelegationResult, ProviderCallMeta } from './types.js';
 import type { AgentFilter, TemplateFilter, FilterableTemplate } from './commands.js';
 import type { MetricsSummary, HistoryFilter } from './history.js';
 import type { StatusReport } from './status.js';
@@ -76,21 +77,153 @@ function getRegexErrorMessage(pattern: string): string {
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
+// ─── Shared Filter Serialization ──────────────────────────────────
+
+/** Serialize agent filters to a JSON-compatible object (null for unset). */
+export function serializeAgentFilters(
+  filter: AgentFilter & { regex?: RegExp | null },
+): Record<string, unknown> {
+  return {
+    tags: filter.tags ?? null,
+    query: filter.query ?? null,
+    readonly: filter.readonly ?? null,
+    writable: filter.writable ?? null,
+    enabled: filter.enabled ?? null,
+    disabled: filter.disabled ?? null,
+    source: filter.source ?? null,
+    regex: filter.regex instanceof RegExp ? filter.regex.source : null,
+  };
+}
+
+/** Serialize template filters to a JSON-compatible object (null for unset). */
+export function serializeTemplateFilters(
+  filter: TemplateFilter & { regex?: RegExp | null },
+): Record<string, unknown> {
+  return {
+    tags: filter.tags ?? null,
+    query: filter.query ?? null,
+    readonly: filter.readonly ?? null,
+    writable: filter.writable ?? null,
+    regex: filter.regex instanceof RegExp ? filter.regex.source : null,
+  };
+}
+
+// ─── JSON Output: Agent Result ────────────────────────────────────
+
+export interface AgentResultJsonOutput {
+  schemaVersion: number;
+  kind: 'agentResult';
+  requestedAgent: string;
+  resolvedAgent: string;
+  aliasUsed: boolean;
+  mode: string;
+  runnerMode: string;
+  status: 'success' | 'fallback' | 'error';
+  durationMs: number;
+  historyId: number | null;
+  replayOf: number | null;
+  providerCall: {
+    available: boolean;
+    fallback: boolean;
+    reason: string;
+  };
+  task: {
+    summary: string;
+  };
+  output: {
+    text: string;
+    format: 'text' | 'provider-call';
+  } | null;
+  error?: {
+    code: string;
+    message: string;
+    availableAgents?: string[];
+  };
+}
+
+/**
+ * Format a delegation result as JSON.
+ *
+ * Privacy guarantees:
+ *   - No API keys
+ *   - No full agent prompt (body) unless it's a delegation prompt
+ *   - No full task text (only summary)
+ *   - Provider-call outputs are included as text
+ */
+export function formatAgentResultJson(params: {
+  requestedAgent: string;
+  resolvedAgent: string;
+  aliasUsed: boolean;
+  mode: string;
+  runnerMode: string;
+  status: 'success' | 'fallback' | 'error';
+  durationMs: number;
+  historyId: number | null;
+  replayOf?: number | null;
+  providerCallAvailable: boolean;
+  error?: string;
+  output?: string | null;
+  availableAgents?: string[];
+}): string {
+  const output: AgentResultJsonOutput = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    kind: 'agentResult',
+    requestedAgent: params.requestedAgent,
+    resolvedAgent: params.resolvedAgent,
+    aliasUsed: params.aliasUsed,
+    mode: params.mode,
+    runnerMode: params.runnerMode,
+    status: params.status,
+    durationMs: params.durationMs,
+    historyId: params.historyId,
+    replayOf: params.replayOf ?? null,
+    providerCall: {
+      available: params.providerCallAvailable,
+      fallback: params.status === 'fallback',
+      reason: params.providerCallAvailable
+        ? (params.status === 'fallback' ? 'Provider-call unavailable, fallback to prompt-only' : 'Provider-call completed')
+        : 'Provider-call not available in this environment',
+    },
+    task: {
+      summary: truncateForJson(params.requestedAgent, 200),
+    },
+    output: null,
+  };
+
+  if (params.status === 'error') {
+    const errorCode = classifyErrorCode(params.error ?? 'Unknown error');
+    output.error = {
+      code: errorCode,
+      message: params.error ?? 'Unknown error',
+    };
+    if (errorCode === 'UNKNOWN_AGENT' && params.availableAgents) {
+      output.error.availableAgents = params.availableAgents;
+    }
+    output.output = null;
+  } else if (params.output !== undefined && params.output !== null) {
+    // Sanitize the output: remove any accidental API keys
+    output.output = {
+      text: sanitizeJsonText(params.output),
+      format: params.runnerMode === 'provider-call' ? 'provider-call' : 'text',
+    };
+  }
+
+  return JSON.stringify(output, null, 2);
+}
+
+/** Get the last history record id from the store. */
+export function getLastHistoryId(): number | null {
+  // Import dynamically to avoid circular dependency
+  // The caller should pass historyId from the result
+  return null;
+}
+
 // ─── JSON Output: Agents ──────────────────────────────────────────
 
 export interface AgentsJsonOutput {
   schemaVersion: number;
   kind: 'agents';
-  filters: {
-    tags?: string[];
-    query?: string;
-    readonly?: boolean;
-    writable?: boolean;
-    enabled?: boolean;
-    disabled?: boolean;
-    source?: string;
-    regex?: string | null;
-  };
+  filters: Record<string, unknown>;
   count: number;
   items: AgentJsonItem[];
 }
@@ -104,6 +237,12 @@ export interface AgentJsonItem {
   tags: string[];
   source: string;
   recommendedMode: string;
+  metadata?: {
+    sourcePath: string;
+    createdAt: string | null;
+    lastModified: string | null;
+    sizeBytes: number | null;
+  } | null;
 }
 
 export function formatAgentsJson(
@@ -113,16 +252,7 @@ export function formatAgentsJson(
   const output: AgentsJsonOutput = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     kind: 'agents',
-    filters: {
-      tags: filter.tags,
-      query: filter.query,
-      readonly: filter.readonly,
-      writable: filter.writable,
-      enabled: filter.enabled,
-      disabled: filter.disabled,
-      source: filter.source,
-      regex: filter.regex instanceof RegExp ? filter.regex.source : null,
-    },
+    filters: serializeAgentFilters(filter),
     count: agents.length,
     items: agents.map(a => ({
       name: a.name,
@@ -133,6 +263,12 @@ export function formatAgentsJson(
       tags: a.tags,
       source: a.source ?? 'unknown',
       recommendedMode: a.recommendedMode ?? 'normal',
+      metadata: a.metadata ? {
+        sourcePath: a.metadata.sourcePath,
+        createdAt: a.metadata.createdAt,
+        lastModified: a.metadata.lastModified,
+        sizeBytes: a.metadata.sizeBytes,
+      } : null,
     })),
   };
 
@@ -144,13 +280,7 @@ export function formatAgentsJson(
 export interface TemplatesJsonOutput {
   schemaVersion: number;
   kind: 'templates';
-  filters: {
-    tags?: string[];
-    query?: string;
-    readonly?: boolean;
-    writable?: boolean;
-    regex?: string | null;
-  };
+  filters: Record<string, unknown>;
   count: number;
   items: TemplateJsonItem[];
 }
@@ -162,22 +292,23 @@ export interface TemplateJsonItem {
   aliases: string[];
   tags: string[];
   recommendedMode: string;
+  metadata?: {
+    sourcePath: string;
+    createdAt: string | null;
+    lastModified: string | null;
+    sizeBytes: number | null;
+  } | null;
 }
 
 export function formatTemplatesJson(
   templates: FilterableTemplate[],
   filter: TemplateFilter & { regex?: RegExp | null },
 ): string {
+  // templates from FilterableTemplate don't have metadata; we handle both
   const output: TemplatesJsonOutput = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     kind: 'templates',
-    filters: {
-      tags: filter.tags,
-      query: filter.query,
-      readonly: filter.readonly,
-      writable: filter.writable,
-      regex: filter.regex instanceof RegExp ? filter.regex.source : null,
-    },
+    filters: serializeTemplateFilters(filter),
     count: templates.length,
     items: templates.map(t => ({
       name: t.name,
@@ -186,6 +317,41 @@ export function formatTemplatesJson(
       aliases: t.aliases,
       tags: t.tags,
       recommendedMode: t.recommendedMode,
+      metadata: null,
+    })),
+  };
+
+  return JSON.stringify(output, null, 2);
+}
+
+/**
+ * Format templates with full TemplateInfo metadata.
+ */
+export function formatTemplatesJsonFull(
+  templates: Array<{
+    name: string;
+    description: string;
+    readonly: boolean;
+    aliases: string[];
+    tags: string[];
+    recommendedMode: string;
+    metadata?: { sourcePath: string; createdAt: string | null; lastModified: string | null; sizeBytes: number | null } | null;
+  }>,
+  filter: TemplateFilter & { regex?: RegExp | null },
+): string {
+  const output: TemplatesJsonOutput = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    kind: 'templates',
+    filters: serializeTemplateFilters(filter),
+    count: templates.length,
+    items: templates.map(t => ({
+      name: t.name,
+      description: t.description,
+      readonly: t.readonly,
+      aliases: t.aliases,
+      tags: t.tags,
+      recommendedMode: t.recommendedMode,
+      metadata: t.metadata ?? null,
     })),
   };
 
@@ -214,6 +380,10 @@ export interface StatusJsonOutput {
   };
   lastReloadTime: string | null;
   delegationCount: number;
+  metadataSummary?: {
+    newestAgentModifiedAt: string | null;
+    newestTemplateModifiedAt: string | null;
+  };
 }
 
 export function formatStatusJson(report: StatusReport, loadedPaths: string[]): string {
@@ -248,12 +418,12 @@ export interface HistoryJsonOutput {
   schemaVersion: number;
   kind: 'history';
   filters: {
-    agent?: string;
-    status?: string;
-    mode?: string;
-    runnerMode?: string;
-    query?: string;
-    limit?: number;
+    agent?: string | null;
+    status?: string | null;
+    mode?: string | null;
+    runnerMode?: string | null;
+    query?: string | null;
+    limit?: number | null;
   };
   count: number;
   items: HistoryJsonItem[];
@@ -282,12 +452,12 @@ export function formatHistoryJson(
     schemaVersion: CURRENT_SCHEMA_VERSION,
     kind: 'history',
     filters: {
-      agent: filter?.agent,
-      status: filter?.status,
-      mode: filter?.mode,
-      runnerMode: filter?.runnerMode,
-      query: filter?.query,
-      limit: filter?.limit,
+      agent: filter?.agent ?? null,
+      status: filter?.status ?? null,
+      mode: filter?.mode ?? null,
+      runnerMode: filter?.runnerMode ?? null,
+      query: filter?.query ?? null,
+      limit: filter?.limit ?? null,
     },
     count: records.length,
     items: records.map(r => ({
@@ -391,6 +561,37 @@ export function formatValidationJson(result: ValidationResult): string {
   return JSON.stringify(output, null, 2);
 }
 
+// ─── JSON Output: Error ─────────────────────────────────────────────
+
+export interface ErrorJsonOutput {
+  schemaVersion: number;
+  kind: 'error';
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+/**
+ * Format a structured error as JSON.
+ * Used when commands need to return structured errors in JSON mode.
+ */
+export function formatErrorJson(code: string, message: string, details?: Record<string, unknown>): string {
+  const output: ErrorJsonOutput = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    kind: 'error',
+    error: {
+      code,
+      message,
+    },
+  };
+  if (details) {
+    output.error.details = details;
+  }
+  return JSON.stringify(output, null, 2);
+}
+
 // ─── Filter augmentation: apply regex to agent ────────────────────
 
 /**
@@ -420,4 +621,35 @@ export function templateMatchesRegex(tmpl: FilterableTemplate, regex: RegExp): b
     ...tmpl.tags,
   ].join(' ');
   return regex.test(searchable);
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────
+
+/** Truncate text for JSON output. */
+function truncateForJson(text: string, maxLen: number): string {
+  if (!text) return '';
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 3) + '...';
+}
+
+/** Sanitize text to remove potential API keys before JSON output. */
+function sanitizeJsonText(text: string): string {
+  if (!text) return '';
+  // Remove common API key patterns
+  return text
+    .replace(/(api[_-]?key)\s*[=:]\s*[A-Za-z0-9_\-]{20,}/gi, '$1=[redacted]')
+    .replace(/(sk-[A-Za-z0-9_\-]{20,})/g, '[API_KEY_REDACTED]')
+    .replace(/(Bearer\s+)([A-Za-z0-9_\-\.]{20,})/gi, '$1[TOKEN_REDACTED]');
+}
+
+/** Classify error into a machine-readable code. */
+function classifyErrorCode(errorMessage: string): string {
+  const msg = errorMessage.toLowerCase();
+  if (msg.includes('not found') || msg.includes('unknown agent')) return 'UNKNOWN_AGENT';
+  if (msg.includes('disabled')) return 'AGENT_DISABLED';
+  if (msg.includes('invalid agent name')) return 'INVALID_AGENT_NAME';
+  if (msg.includes('invalid mode')) return 'INVALID_MODE';
+  if (msg.includes('regex')) return 'INVALID_REGEX';
+  if (msg.includes('format')) return 'INVALID_FORMAT';
+  return 'UNKNOWN_ERROR';
 }

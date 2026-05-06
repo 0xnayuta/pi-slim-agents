@@ -177,6 +177,30 @@
 - [x] 47 new M10 tests (302 total, 1 pre-existing Windows-specific `/proc` failure)
 - [x] Updated `docs/design.md` with JSON output, regex, autocomplete, token usage design
 
+## v0.1.0 — M11: Agent Command JSON / Metadata / JSON Polish
+
+**JSON output for /agent command, source metadata enhancement, and JSON polish.**
+
+- [x] `/agent --format json` — JSON output for delegation results (success/error)
+- [x] `/agent --mode <mode> --format json` — Combined mode and format flags
+- [x] `kind: agentResult` — New JSON response kind for /agent delegation
+- [x] `kind: error` — Structured error JSON for format/regex failures
+- [x] Filters use `null` for unset fields (consistent serialization)
+- [x] `/agents --format json` includes `metadata` — sourcePath, createdAt, lastModified, sizeBytes
+- [x] `/agents templates --format json` includes `metadata`
+- [x] File metadata collection via `fs.statSync` (non-fatal, graceful null on failure)
+- [x] `collectFileMetadata()` utility in `src/metadata.ts`
+- [x] `serializeAgentFilters()` / `serializeTemplateFilters()` — Reusable filter utilities
+- [x] API key sanitization in `formatAgentResultJson` (`sanitizeJsonText()`)
+- [x] `FileMetadata` type added to `types.ts`
+- [x] `AgentDefinition.metadata` and `TemplateInfo.metadata` fields
+- [x] Standalone fallback JSON commands not implemented (flags support is reliable)
+- [x] Provider-call roadmap updated with blocking points and candidate solutions
+- [x] 31 new M11 tests (333 total, 1 pre-existing Windows-specific `/proc` failure)
+- [x] Updated `docs/design.md` with M11 design notes
+- [x] Updated `docs/provider-call.md` with M11 roadmap
+- [x] Updated README with /agent --format json, metadata, privacy notes, standalone JSON commands
+
 ## v0.3.0 — Planned
 
 **Enhanced delegation and agent capabilities.**

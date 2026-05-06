@@ -17,6 +17,7 @@ import type {
   AgentFileEntry,
   AgentFrontmatter,
   AgentSource,
+  FileMetadata,
   SlimAgentsConfig,
 } from './types.js';
 import {
@@ -27,6 +28,7 @@ import {
   PROJECT_AGENTS_DIR,
   USER_AGENTS_DIR,
 } from './utils.js';
+import { collectFileMetadata } from './metadata.js';
 import { getAgentOverride, isAgentDisabled } from './config.js';
 
 // ─── Public API ─────────────────────────────────────────────────────
@@ -142,6 +144,7 @@ function resolveAgents(
         : [];
 
       // Build agent definition from frontmatter + markdown body.
+      const fileMetadata: FileMetadata = collectFileMetadata(entry.filePath);
       const agent: AgentDefinition = {
         name: agentName,
         description:
@@ -157,6 +160,7 @@ function resolveAgents(
         order: typeof fm.order === 'number' ? fm.order : 100,
         sourcePath: entry.filePath,
         source: entry.source,
+        metadata: fileMetadata,
       };
 
       agents.push(agent);

@@ -138,3 +138,7 @@ const piAiPath = require.resolve('@mariozechner/pi-ai', {
 | M4 | Graceful fallback to prompt-only | Users should never see errors from provider-call unavailability |
 | M5 | Document investigation results | Clear record of why provider-call doesn't work yet |
 | M5 | Do not force-fix importability | Hacks would be fragile and non-portable |
+| M11 | Do not attempt real integration this milestone | Avoid binding to unstable internal API; avoid breaking package portability |
+| M11 | Monitor pi-mono ExtensionAPI for direct model calling | Complete/generateText on ExtensionAPI would eliminate pi-ai dependency |
+| M11 | Optional peerDependency on pi-ai candidate | Only viable if pi-ai is published as standalone package |
+| M11 | pnpm public-hoist-pattern not recommended | Breaks module isolation; non-portable across environments |
