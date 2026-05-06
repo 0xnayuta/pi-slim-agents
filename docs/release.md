@@ -305,8 +305,17 @@ CI runs on:
 
 CI configuration:
 - **Node.js**: 24 (GitHub Actions runtime)
+- **pnpm**: 10.32.0 (pinned via `pnpm/action-setup@v4` `version` and `package.json` `packageManager`)
 - **pnpm caching**: Manual pnpm store caching via `actions/cache@v4`
 - **Lockfile**: `--no-frozen-lockfile` for CI (allows lockfile updates in PRs)
+
+### pnpm version requirement
+
+This project requires **pnpm >= 10.26.0** because `pnpm pack --dry-run` was introduced in pnpm 10.26.0.
+
+The recommended pnpm version is **10.32.0**, matching `package.json` `packageManager` field.
+
+CI prints `pnpm --version` during setup to verify the correct version is used.
 
 CI steps:
 1. Setup Node.js 24

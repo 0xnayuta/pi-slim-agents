@@ -118,3 +118,58 @@ After this fix:
 2. **Lockfile strategy**: CI uses `--no-frozen-lockfile` to allow lockfile updates in PRs. If strict lockfile enforcement is desired, this could be changed to `--frozen-lockfile` with appropriate handling for lockfile update PRs.
 
 3. **Node.js 24 compatibility**: While the workflow is configured for Node.js 24, full compatibility with all dependencies should be verified over time as Node.js 24 matures.
+
+## Follow-up: pnpm pack --dry-run requires pnpm >= 10.26.0
+
+### CI failure
+
+After the Node 24 / pnpm cache fix was applied, CI continued to fail on the `pnpm pack:dry` step:
+
+```
+Run pnpm pack:dry
+
+> @0xnayuta/pi-slim-agents@0.1.0 pack:dry
+> pnpm pack --dry-run
+
+ERROR Unknown option: 'dry-run'
+ELIFECYCLE Command failed with exit code 1.
+```
+
+### Root cause
+
+The CI workflow used `pnpm/action-setup@v4` with `version: 9`, which installed pnpm 9.x. The `pnpm pack --dry-run` option was introduced in pnpm 10.26.0. pnpm 9 does not recognize this flag.
+
+### Fix
+
+1. **Pin pnpm version to 10.32.0** in `.github/workflows/ci.yml`:
+   ```yaml
+   - name: Setup pnpm
+     uses: pnpm/action-setup@v4
+     with:
+       version: 10.32.0
+       run_install: false
+   ```
+
+2. **Add `packageManager` field** to `package.json`:
+   ```json
+   "packageManager": "pnpm@10.32.0"
+   ```
+   This ensures local development and CI use the same pnpm version.
+
+3. **Add pnpm version print step** in CI for diagnostics:
+   ```yaml
+   - name: Print pnpm version
+     run: pnpm --version
+   ```
+
+4. **Update docs/release.md** to document pnpm >= 10.26.0 requirement.
+
+### Validation
+
+```bash
+$ pnpm --version
+10.32.0
+
+$ pnpm pack --dry-run
+# (succeeds — lists package contents without creating tarball)
+```
