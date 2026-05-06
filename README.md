@@ -100,6 +100,13 @@ Should show 6 built-in agents.
 /agent -m quick explorer find playback code
 ```
 
+### With JSON output
+
+```text
+/agent --format json oracle review this design
+/agent --mode deep --format json arch review the architecture
+```
+
 ### Use templates
 
 ```text
@@ -278,6 +285,7 @@ No API keys, no full prompts, no full task text in JSON output.
 /agents replay 5                             # Replay delegation
 /agents replay 5 --mode deep                 # Replay with deeper analysis
 /agents replay 5 --agent oracle              # Replay with different agent
+/agents replay 5 --files src/a.ts,src/b.ts   # Replay with comma-separated file list
 
 /agents export-history                       # Export as JSON
 /agents metrics                              # Delegation statistics

@@ -1261,6 +1261,14 @@ await test('buildAgentHelpText returns help with examples', () => {
   assert.ok(help.includes('/agent'), 'should mention /agent');
   assert.ok(help.includes('explorer'), 'should mention explorer');
   assert.ok(help.includes('Usage'), 'should have usage section');
+  assert.ok(help.includes('--format'), 'should document --format flag');
+  assert.ok(help.includes('--mode'), 'should document --mode flag');
+  assert.ok(help.includes('--format json'), 'should show --format json example');
+  assert.ok(help.includes('Modes:'), 'should list available modes');
+  assert.ok(help.includes('Formats:'), 'should list available formats');
+  assert.ok(help.includes('quick') && help.includes('normal') && help.includes('deep'), 'should list all mode values');
+  assert.ok(help.includes('text') && help.includes('json'), 'should list all format values');
+  assert.ok(help.includes('Aliases:'), 'should document alias mappings');
 });
 
 // ─── 27. /agent writes to history ──────────────────────────────────
@@ -1515,6 +1523,29 @@ await test('replayDelegation uses resolvedAgent not alias', async () => {
   const result = await replayDelegation(record.id, PROJECT_ROOT, {}, false);
   assert.equal(result.ok, true);
   assert.equal(result.result!.agentName, 'oracle');
+});
+
+await test('parseReplayArgs splits --files by comma', async () => {
+  const { parseReplayArgs } = await import('../src/commands.js');
+  const parsed = parseReplayArgs('5 --files src/a.ts,src/b.ts');
+  assert.equal(parsed.id, 5);
+  assert.deepEqual(parsed.overrides.files, ['src/a.ts', 'src/b.ts']);
+});
+
+await test('parseReplayArgs --files with whitespace trims entries', async () => {
+  const { parseReplayArgs } = await import('../src/commands.js');
+  // Note: The entire value after --files is taken as one token,
+  // so commas with spaces around them are preserved in the string
+  const parsed = parseReplayArgs('5 --files "src/a.ts , src/b.ts"');
+  assert.equal(parsed.id, 5);
+  assert.deepEqual(parsed.overrides.files, ['src/a.ts', 'src/b.ts']);
+});
+
+await test('parseReplayArgs --files single file works', async () => {
+  const { parseReplayArgs } = await import('../src/commands.js');
+  const parsed = parseReplayArgs('5 --files src/main.ts');
+  assert.equal(parsed.id, 5);
+  assert.deepEqual(parsed.overrides.files, ['src/main.ts']);
 });
 
 // ─── 30. Output templates ──────────────────────────────────────────
@@ -3832,6 +3863,83 @@ await test('/agents templates --format json includes metadata', async () => {
     assert.equal(typeof item.metadata.sourcePath, 'string');
     assert.ok(item.metadata.lastModified === null || typeof item.metadata.lastModified === 'string');
     assert.ok(item.metadata.sizeBytes === null || typeof item.metadata.sizeBytes === 'number');
+  }
+});
+
+await test('/agents templates --format json includes metadata.sourcePathKind', async () => {
+  const { formatTemplatesJsonFull } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  const json = formatTemplatesJsonFull(result.templates, {});
+  const parsed = JSON.parse(json);
+  assert.ok(parsed.items.length > 0);
+  for (const item of parsed.items) {
+    assert.ok(item.metadata, 'item should have metadata');
+    assert.ok('sourcePathKind' in item.metadata, 'template metadata should have sourcePathKind field');
+    assert.ok(['builtin', 'project', 'user', 'external', 'unknown'].includes(item.metadata.sourcePathKind),
+      `sourcePathKind should be valid value, got: ${item.metadata.sourcePathKind}`);
+  }
+});
+
+await test('templates JSON metadata structure matches agents JSON metadata structure', async () => {
+  const { formatAgentsJson, formatTemplatesJsonFull } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const agentsJson = JSON.parse(formatAgentsJson(agents, {}));
+  const templatesResult = loadTemplates();
+  assert.equal(templatesResult.ok, true);
+  const templatesJson = JSON.parse(formatTemplatesJsonFull(templatesResult.templates, {}));
+
+  assert.ok(agentsJson.items.length > 0, 'should have at least one agent');
+  assert.ok(templatesJson.items.length > 0, 'should have at least one template');
+
+
+  const agentItem = agentsJson.items[0];
+  const templateItem = templatesJson.items[0];
+
+  // Both should have metadata field
+  assert.ok(agentItem.metadata !== undefined, 'agent item should have metadata field');
+  assert.ok(templateItem.metadata !== undefined, 'template item should have metadata field');
+
+
+  if (agentItem.metadata && templateItem.metadata) {
+    // Check key metadata fields exist in both
+    assert.ok('sourcePath' in agentItem.metadata, 'agent metadata should have sourcePath');
+    assert.ok('sourcePath' in templateItem.metadata, 'template metadata should have sourcePath');
+    assert.ok('sourcePathKind' in agentItem.metadata, 'agent metadata should have sourcePathKind');
+    assert.ok('sourcePathKind' in templateItem.metadata, 'template metadata should have sourcePathKind');
+    assert.ok('createdAt' in agentItem.metadata, 'agent metadata should have createdAt');
+    assert.ok('createdAt' in templateItem.metadata, 'template metadata should have createdAt');
+    assert.ok('lastModified' in agentItem.metadata, 'agent metadata should have lastModified');
+    assert.ok('lastModified' in templateItem.metadata, 'template metadata should have lastModified');
+    assert.ok('sizeBytes' in agentItem.metadata, 'agent metadata should have sizeBytes');
+    assert.ok('sizeBytes' in templateItem.metadata, 'template metadata should have sizeBytes');
+  }
+});
+
+await test('templates JSON metadata does not include absolute user paths', async () => {
+  const { formatTemplatesJsonFull } = await import('../src/format.js');
+  const { loadTemplates } = await import('../src/templates.js');
+  const result = loadTemplates();
+  assert.equal(result.ok, true);
+  const json = formatTemplatesJsonFull(result.templates, {});
+  const parsed = JSON.parse(json);
+
+
+  for (const item of parsed.items) {
+    if (item.metadata && item.metadata.sourcePath) {
+      // Should not contain absolute Windows paths (e.g., C:\Users\...)
+      assert.ok(!item.metadata.sourcePath.match(/^[A-Za-z]:\\/),
+        `sourcePath should not be absolute Windows path: ${item.metadata.sourcePath}`);
+      // Should not contain /home/ or /Users/ (absolute Unix paths)
+      assert.ok(!item.metadata.sourcePath.startsWith('/home/'),
+        `sourcePath should not be absolute /home path: ${item.metadata.sourcePath}`);
+      assert.ok(!item.metadata.sourcePath.startsWith('/Users/'),
+        `sourcePath should not be absolute /Users path: ${item.metadata.sourcePath}`);
+      // Should not contain /root/ (absolute root paths)
+      assert.ok(!item.metadata.sourcePath.startsWith('/root/'),
+        `sourcePath should not be absolute /root path: ${item.metadata.sourcePath}`);
+    }
   }
 });
 
