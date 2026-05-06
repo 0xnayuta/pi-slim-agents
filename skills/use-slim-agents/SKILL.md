@@ -73,6 +73,87 @@ delegate_agent({
 - **UI/UX review** → `designer` / `ui` / `ux`
 - **Small bounded implementation** → `fixer` / `fix` / `implement`
 
+## Agent Selection Guide
+
+When unsure which agent to use, follow this decision tree:
+
+### 1. Do you know the file location?
+- **Yes** → Do you need implementation or design advice?
+  - Implementation → Use `fixer`
+  - Design review → Use `oracle`
+- **No** → Use `explorer` first to find the code
+
+### 2. Does the task involve external documentation or libraries?
+- **Yes** → Use `librarian`
+- **No** → Continue to step 3
+
+### 3. Does the task involve UI/UX or visual design?
+- **Yes** → Use `designer`
+- **No** → Continue to step 4
+
+### 4. Is it a complex multi-step task?
+- **Yes** → Consider `orchestrator` for guidance on decomposition
+- **No** → Handle directly or use the most specific agent
+
+## Delegation Principles
+
+### Don't Over-Delegate
+Simple tasks you can handle directly should not be delegated. Delegation has overhead — only use specialists when they add clear value.
+
+**Good**:
+- "Find all usages of the auth module" → delegate to `explorer`
+- "Review this architecture" → delegate to `oracle`
+- "Add a null check" → delegate to `fixer`
+
+**Bad**:
+- "What does package.json do?" → delegate to `librarian` (trivial lookup)
+- "Fix the typo in README" → delegate to `fixer` (you can do this directly)
+
+### Choose the Right Agent
+Each agent has a narrow specialization. Using the wrong agent leads to poor results.
+
+| Task | Wrong Agent | Right Agent |
+|------|-------------|-------------|
+| Find a file | `oracle` | `explorer` |
+| Write code | `oracle` | `fixer` |
+| Review design | `fixer` | `oracle` or `designer` |
+| Research a library | `explorer` | `librarian` |
+
+### Provide Clear Delegation Tasks
+Vague delegation tasks produce vague results. Be specific:
+
+**Good**:
+```
+delegate_agent({
+  agent: "explorer",
+  task: "Find where UserService.getProfile() is defined in src/"
+})
+```
+
+**Bad**:
+```
+delegate_agent({
+  agent: "explorer",
+  task: "Look at the user stuff"
+})
+```
+
+### If Output Lacks Evidence
+If an agent's output is too vague or lacks concrete evidence (paths, line numbers, sources), ask it to refocus:
+
+- **explorer** → "Please provide specific file:line references"
+- **librarian** → "Please cite the official documentation source"
+- **oracle** → "Please be specific — which file/line has the issue?"
+- **fixer** → "Please show the exact changes proposed"
+- **designer** → "Please provide actionable layout suggestions, not abstract advice"
+
+## When NOT to Delegate
+
+- **Simple tasks** where you have full context — do them yourself
+- **Tasks requiring user interaction** — handle directly
+- **Quick file lookups** you can do with `read` or `grep` in a few calls
+- **Delegation overhead > benefit** — just do it
+
 ## Creating Custom Agents
 
 If you need a specialist role that doesn't exist, check templates first:
@@ -115,16 +196,9 @@ Don't create an agent for every small task — use built-in agents or delegate d
 
 ```
 /agents replay 5                    # replay with original params
-/agents replay 5 --mode deep        # replay with deeper analysis
+/agents replay 5 --mode deep       # replay with deeper analysis
 /agents replay 5 --agent oracle     # replay with different agent
 ```
-
-## When NOT to Delegate
-
-- **Simple tasks** where you have full context — do them yourself
-- **Tasks requiring user interaction** — handle directly
-- **Quick file lookups** you can do with `read` or `grep` in a few calls
-- **Delegation overhead > benefit** — just do it
 
 ## After Delegation
 

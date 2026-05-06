@@ -4,28 +4,21 @@ Lightweight specialist agents for [pi-coding-agent](https://github.com/mariozech
 
 ## Current status
 
-**v0.1.0 (M11) — Agent Command JSON / Metadata / JSON Polish.**
+**v0.1.0 (M12) — Prompt Tuning / Lightweight Eval Examples.**
 
 This release adds:
-- **`/agent --format json`** — JSON output for delegation results (success/error)
-- **`/agent --mode <mode> --format json`** — Mode + JSON combined
-- **`/agent --format json oracle review ...`** — JSON output for agent delegation
-- **`/agent --format json unknown task`** — Structured error JSON for unknown agents
-- **`/agent --format json disabled-agent task`** — Structured error for disabled agents
-- **Filters use `null` for unset fields** — Consistent serialization (tags/query/readonly/writable/enabled/disabled/source/regex)
-- **`/agents --format json` includes metadata** — `sourcePath`, `createdAt`, `lastModified`, `sizeBytes` per agent
-- **`/agents templates --format json` includes metadata** — Same fields for templates
-- **New `kind: agentResult`** — JSON response kind for /agent delegation results
-- **`kind: error`** — Structured error JSON for format/regex failures
-- **`serializeAgentFilters` / `serializeTemplateFilters`** — Reusable filter serialization utilities
-- **Source metadata enhancement** — All agents and templates include file stat metadata
-- **API key sanitization** — Delegation output JSON redacts API keys before serialization
-- **Non-fatal metadata collection** — Stat failures don't crash the extension; fields default to null
+- **`examples/prompt-evals/`** — Lightweight eval cases for all built-in agents and templates
+- **`pnpm test:prompts`** — Static prompt eval checker script
+- **Prompt tuning guide** — Updated `docs/prompt-tuning.md` with quality checklist
+- **Boundary reinforcement** — All agent prompts strengthened with clearer constraints
+- **SKILL.md updates** — Delegation principles and agent selection guide
 
-### M11 does not add (see roadmap)
+### M12 does not add (see roadmap)
 - Real provider-call integration (still falls back to prompt-only)
 - Token usage tracking (still unavailable)
 - Tag autocomplete (future, requires pi-mono completion API)
+- Agent composition or pipelines
+- Child session delegation
 
 | Mode | Behavior |
 |------|----------|
@@ -1052,6 +1045,42 @@ This version intentionally does **not** support:
 - Real token usage statistics (still unavailable — requires real provider-call)
 - pi-ai importability fixes for provider-call
 - Tag autocomplete (future feature, requires pi-mono completion API)
+- Child session delegation
+
+## Prompt Eval Examples
+
+The `examples/prompt-evals/` directory contains lightweight eval cases for all built-in agents and templates. These are:
+
+- **Human-readable spec sheets** — define what good output looks like
+- **Semi-automated checks** — static checks verify structure, not quality
+- **Prompt tuning references** — guide small, targeted prompt changes
+- **Failure mode documentation** — document common anti-patterns
+
+**This is NOT an automatic benchmark.** It's a lightweight human-in-the-loop eval system for prompt tuning.
+
+### Running Static Checks
+
+```bash
+pnpm test:prompts
+```
+
+This runs `scripts/check-prompt-evals.ts` which validates:
+- All eval files exist
+- Each agent has at least 3 eval cases
+- Each eval case has required fields (Agent, Task, Expected behavior)
+- Built-in agent files are non-empty
+- Agent prompts contain boundary constraints
+- `docs/prompt-tuning.md` exists and contains checklist
+
+### Prompt Tuning Principles
+
+1. **Slim** — Keep prompts under 500 words. Every sentence adds context.
+2. **Evidence-first** — Require `path:line` for code, citations for docs.
+3. **Bounded output** — Define max size, required fields, exclusions.
+4. **No fake tool actions** — Read-only agents don't modify files. Writable agents clarify when.
+5. **Clear boundaries** — Say what NOT to do, not just what to do.
+
+See [docs/prompt-tuning.md](docs/prompt-tuning.md) for the full quality checklist.
 
 ## Development
 
@@ -1059,6 +1088,7 @@ This version intentionally does **not** support:
 pnpm install
 pnpm typecheck
 pnpm test
+pnpm test:prompts
 pnpm pack --dry-run
 ```
 

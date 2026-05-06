@@ -31,6 +31,8 @@
     "agents",
     "templates",
     "skills",
+    "examples/prompt-evals",
+    "scripts/check-prompt-evals.ts",
     "README.md",
     "LICENSE",
     "package.json"
@@ -38,8 +40,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx tests/agents.test.ts",
+    "test": "pnpm test:agents && pnpm test:prompts",
     "test:agents": "tsx tests/agents.test.ts",
+    "test:prompts": "tsx scripts/check-prompt-evals.ts",
     "pack:dry": "pnpm pack --dry-run"
   },
   "peerDependencies": {
