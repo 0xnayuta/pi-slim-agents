@@ -2209,12 +2209,21 @@ await test('persistent history init is no-op when not enabled', () => {
 });
 
 await test('persistent history write failure does not throw', () => {
-  const testStore = new (historyStore.constructor as any)();
-  // Init with invalid path (read-only directory)
-  testStore.init('/proc', { persistent: true, path: 'history.jsonl' });
-  // Should not throw even though /proc is read-only
-  testStore.add({ timestamp: 1, requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
-  assert.equal(testStore.count(), 1); // Still added to memory
+  // Note: historyStore is a singleton shared across tests
+  // The key behavior: no exception thrown on write failure, record added to memory
+  try {
+    // Re-initialize with invalid path (read-only /proc on Unix, invalid on Windows)
+    historyStore.init('/proc', { persistent: true, path: 'history.jsonl' });
+    // Add should not throw even if file write fails
+    historyStore.add({ timestamp: Date.now(), requestedAgent: 'a', resolvedAgent: 'oracle', taskSummary: 't', mode: 'normal', runnerMode: 'prompt-only', status: 'success', durationMs: 100, providerCallAvailable: false, aliasUsed: false });
+    // Verify record was added to in-memory store
+    const records = historyStore.recent(1);
+    assert.ok(records.length >= 1, 'Record should be in memory');
+    assert.equal(records[0].requestedAgent, 'a', 'Record should have correct agent');
+  } catch (e) {
+    // This test validates resilience - any exception is a bug
+    throw new Error(`Write failure should not throw: ${e}`);
+  }
 });
 
 await test('persistent history nextId continues from loaded records', () => {

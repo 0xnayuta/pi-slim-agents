@@ -31,10 +31,12 @@
     "agents",
     "templates",
     "skills",
+    "docs",
     "examples/prompt-evals",
     "scripts/check-prompt-evals.ts",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
     "package.json"
   ],
   "scripts": {
@@ -43,7 +45,10 @@
     "test": "pnpm test:agents && pnpm test:prompts",
     "test:agents": "tsx tests/agents.test.ts",
     "test:prompts": "tsx scripts/check-prompt-evals.ts",
-    "pack:dry": "pnpm pack --dry-run"
+    "pack:dry": "pnpm pack --dry-run",
+    "check:package": "tsx scripts/check-package.ts",
+    "release:check": "pnpm typecheck && pnpm build && pnpm test && pnpm check:package && pnpm pack:dry",
+    "prepublishOnly": "pnpm release:check"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
