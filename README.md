@@ -4,9 +4,9 @@ Lightweight specialist agents for [pi-mono](https://github.com/mariozechner/pi-c
 
 ## Status
 
-**v0.1.0 — Release Candidate**
+**v0.1.0 — Release-ready**
 
-This is the first release of pi-slim-agents. The core delegation system is functional and ready for use. npm publication is pending.
+This is the first release of pi-slim-agents. The core delegation system is functional and ready for use. npm publication is pending — the package is prepared for publication.
 
 | Feature | Status |
 |---------|--------|
@@ -54,7 +54,7 @@ It is a lightweight specialist delegation layer that helps the main agent call f
 pi install npm:@0xnayuta/pi-slim-agents
 ```
 
-> **Note**: npm publication is pending. After release, the command above will work.
+> **Note**: npm publication is pending. Once published, the command above will install the package.
 
 ### Local development
 

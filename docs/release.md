@@ -26,31 +26,47 @@ pnpm release:check
 This runs:
 1. `pnpm typecheck` — TypeScript type checking
 2. `pnpm build` — Compile TypeScript to dist/
-3. `pnpm test:agents` — Unit tests
-4. `pnpm test:prompts` — Prompt eval static checks
-5. `pnpm check:package` — Package contents verification
+3. `pnpm test:agents` — Unit tests (362 tests)
+4. `pnpm test:prompts` — Prompt eval static checks (7 checks)
+5. `pnpm check:package` — Package contents verification (13 checks)
 6. `pnpm pack:dry` — Dry-run npm pack
 
-### 3. Check package contents
+### 3. Verify npm login
 
 ```bash
-pnpm check:package
+npm whoami
 ```
 
-Verifies:
-- `dist/index.js` exists and is valid
-- `agents/*.md` files present
-- `templates/*.md` files present
-- `skills/use-slim-agents/SKILL.md` exists
-- `README.md` has required sections
-- `CHANGELOG.md` mentions version
-- `.gitignore` ignores history files
+Must be logged in as `@0xnayuta`.
 
-### 4. Review CHANGELOG.md
+### 4. Check package contents (dry-run)
+
+```bash
+pnpm pack:dry
+```
+
+Verify these are included:
+- `dist/` — compiled TypeScript
+- `agents/` — 6 built-in agent files
+- `templates/` — 7 template files
+- `skills/` — skill definitions
+- `docs/` — documentation
+- `examples/prompt-evals/` — eval examples
+- `README.md`, `LICENSE`, `CHANGELOG.md`, `package.json`
+
+Verify these are excluded:
+- `tests/`
+- `src/`
+- `.github/`
+- `.pi/`
+- `history.jsonl`
+- `.env`
+
+### 5. Review CHANGELOG.md
 
 Make sure:
 - All M13 changes are documented
-- Version is set to unreleased (`[0.1.0] - Unreleased`)
+- Version is set to release date (`[0.1.0] - YYYY-MM-DD`)
 - No future features documented as past tense
 
 ### 5. Verify dist/ contents
@@ -90,7 +106,7 @@ Add a release date.
 
 ## Publishing
 
-### Login to npm
+### npm login verification
 
 ```bash
 npm whoami
@@ -134,16 +150,27 @@ pi install npm:@0xnayuta/pi-slim-agents
 
 ### Test basic functionality
 
-```bash
+```text
 /agents
 ```
 
 Should show 6 built-in agents.
 
+### Smoke test commands
+
+```text
+/agent explorer find where agents are loaded
+/agents validate
+/agents status
+/agents templates
+/agents history
+/agents metrics
+```
+
 ### Test delegation
 
 ```text
-/agent explorer test task
+/agent oracle review this design
 ```
 
 Should show delegation result (prompt-only mode).
@@ -155,6 +182,68 @@ Should show delegation result (prompt-only mode).
 ```
 
 Should pass all validation checks.
+
+### JSON output test
+
+```text
+/agents --format json
+/agent --format json explorer test task
+/agents status --format json
+```
+
+## GitHub Release
+
+### Create git tag
+
+```bash
+git tag v0.1.0
+```
+
+### Push tag to remote
+
+```bash
+git push origin v0.1.0
+```
+
+### Create GitHub Release
+
+1. Go to https://github.com/0xnayuta/pi-slim-agents/releases/new
+2. Select the `v0.1.0` tag
+3. Title: `v0.1.0`
+4. Copy CHANGELOG.md content for this version
+
+### Release notes template
+
+```markdown
+## What's Changed
+
+<!-- Copy from CHANGELOG.md [0.1.0] section -->
+
+## v0.1.0 Supported Features
+
+- 6 built-in slim agents: explorer, librarian, oracle, fixer, designer, orchestrator
+- `/agent` shortcut with `--mode` flag (quick, normal, deep)
+- Agent aliases (search→explorer, arch→oracle, etc.)
+- 7 templates: security-reviewer, test-writer, doc-generator, refactor-planner, bug-triager, release-checker, cpp-reviewer
+- Tags, filters, regex, query search
+- JSON output for all commands
+- History, metrics, replay
+- Enable/disable configuration
+- Persistent history (optional)
+
+## ⚠️ Known Limitations
+
+- Provider-call is **architectural only** — falls back to prompt-only
+- Real model calls pending pi-mono ExtensionAPI
+
+## Installation
+
+```bash
+pi install npm:@0xnayuta/pi-slim-agents
+```
+
+**Full Changelog**: https://github.com/0xnayuta/pi-slim-agents/compare/v0.0.1...v0.1.0
+```
 
 ## Rollback / Hotfix
 

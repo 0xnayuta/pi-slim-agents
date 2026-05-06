@@ -287,3 +287,36 @@
 - [ ] Council / voting flows
 - [ ] Session resume for delegated agents
 - [ ] MCP integration
+
+## Post-0.1.0 Follow-ups
+
+These items were identified during R7 final release review but are non-blocking for v0.1.0.
+
+### Test Coverage Improvements
+
+- [ ] **Unicode/Chinese input tests** — Test agent behavior with non-ASCII task text
+- [ ] **Repeated flag tests** — Test `/agent --mode deep --mode quick` edge case
+- [ ] **outputTemplate=false integration test** — Verify plain output rendering
+- [ ] **--flag-like text in task parsing** — Document limitation (quote task text if it contains `--flag-like` patterns)
+- [ ] **Concurrent history append tests** — Test race conditions with persistent history
+
+### Features / Spikes
+
+- [ ] **Provider-call feasibility spike** — Monitor pi-mono ExtensionAPI releases for @mariozechner/pi-ai import fix
+- [ ] **Tag autocomplete in /agent** — Reserve future enhancement
+- [ ] **Token usage tracking** — Requires real provider-call integration
+
+### Dogfooding
+
+- [ ] **Dogfood in dev workflow** — Use /agent, /agents, templates in actual development work
+- [ ] **Real-world prompt tuning** — Iterate on agent prompts based on actual usage
+
+### Documentation Improvements
+
+- [ ] **README table of contents** — Consider adding for the 400+ line document
+- [ ] **`--source` filter documentation** — Add to README quick reference
+- [ ] **docs/ navigation index** — Consider adding a docs/README.md for navigation
+
+---
+
+*Last updated: 2026-05-06*
